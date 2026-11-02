@@ -1,0 +1,9 @@
+/* Only the two Zygisk entry points are visible. Everything else — including libc++ template
+ * instantiations that would otherwise leak as weak symbols — stays local. */
+{
+  global:
+    zygisk_module_entry;
+    zygisk_companion_entry;
+  local:
+    *;
+};

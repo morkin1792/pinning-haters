@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 0 }
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with: { ndk-version: r27c }
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: build and package
+        run: tools/package.sh "$GITHUB_REF_NAME"
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/pinning-haters-*.zip
+          generate_release_notes: true
+      - name: point update.json at the release
+        run: |
+          code=$(sed -n 's/^versionCode=//p' module/module.prop)
+          python3 - "$GITHUB_REF_NAME" "$code" <<'PY'
+          import json, sys
+          v, code = sys.argv[1], int(sys.argv[2])
+          j = json.load(open("module/update.json"))
+          j["version"] = v
+          j["versionCode"] = code
+          j["zipUrl"] = f"https://github.com/${{ github.repository }}/releases/download/{v}/pinning-haters-{v}.zip"
+          json.dump(j, open("module/update.json", "w"), indent=2)
+          open("module/update.json", "a").write("\n")
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add module/update.json
+          git commit -m "update.json: $GITHUB_REF_NAME" && git push origin HEAD:main || echo "update.json unchanged"

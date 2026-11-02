@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "stealth": "max",
+  "packages": {
+    "com.example.targetapp": {},
+    "com.example.hardened": { "stealth": "balanced" }
+  },
+  "relax_hostname_verification": false,
+  "surfaces": {
+    "platform_tls": true,
+    "java_dex": true,
+    "bundled_tls": true,
+    "foreign_runtime": false
+  },
+  "aot": {
+    "evict_oat": true,
+    "stat_hook_fallback": true
+  },
+  "hide": {
+    "self_remap": true
+  },
+  "log": { "enabled": false, "verbose": false }
+}

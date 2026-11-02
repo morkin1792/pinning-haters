@@ -1,0 +1,11 @@
+tools/reference-libs/
+build/
+*.zip
+tests/dex_patcher/build/
+tests/test-app/.gradle/
+tests/test-app/app/build/
+tests/test-app/local.properties
+__pycache__/
+tests/test-app/build-manual/
+tests/test-app/debug.keystore
+.mcp.json
