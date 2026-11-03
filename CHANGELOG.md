@@ -69,7 +69,7 @@ two, and Android 12 to 15 and Magisk as a host are still pending (see the Status
 ### Removed
 
 - App- and build-specific rows (one app's network-library probes, Topaz Heartbeat letter wrappers from one build, one Kony build's exit dispatcher) and the `NOP_CALLS` kind they alone used: the module ships generic surfaces only.
-- The `rasp` surface (`surfaces.rasp`): the Java root-detection rows (RootBeer, jail-monkey, safe_device, freeRASP, Kony, Datablink), the root-indicator filter (`rasp/path_filter`), the `RETURN_NULL` kind and wildcard-class rows they alone used, `tools/device_trace.sh` and `tools/hprof_refs.py`. Root and tamper hiding moved to a separate module; pinning-haters is TLS-only.
+- The `rasp` surface (`surfaces.rasp`): the Java root-detection rows (RootBeer, jail-monkey, safe_device, freeRASP, Kony, Datablink), the root-indicator filter (`rasp/path_filter`), the `RETURN_NULL` kind and wildcard-class rows they alone used, `tools/device_trace.sh` and `tools/hprof_refs.py`. Root and tamper hiding moved to [rootcheck-haters](https://github.com/morkin1792/rootcheck-haters); pinning-haters is TLS-only.
 
 ### Fixed (review of 2026-11-01)
 

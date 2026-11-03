@@ -1087,8 +1087,11 @@ often just a messenger.
 
 ### Root and tamper hiding moved to a separate module (2026-11-03)
 
-Root and tamper hiding (the `rasp` surface, its Java rows and the root-indicator filter) moved to a
-separate module; pinning-haters is TLS-only.
+Root and tamper hiding (the `rasp` surface, its Java rows and the root-indicator filter) moved to
+rootcheck-haters (https://github.com/morkin1792/rootcheck-haters; module id `rootcheck_haters`,
+config at `/data/adb/rootcheck_haters/`); pinning-haters is TLS-only. Both modules install together:
+each hooks `adler32` in `libdexfile.so` and they chain through the GOT, verified on the Mi 9T on
+2026-11-03.
 
 ### Libraries opened by Dart FFI were invisible to the re-scan (2026-11-01)
 
@@ -1182,7 +1185,7 @@ the patch that follows from it stays out of the table. Applied the same day: the
 rows from the Kony banking app work (its network-library probes, Topaz Heartbeat's R8-letter wrappers and
 `getInfo` checks, the Kony exit dispatcher) were removed with the `NOP_CALLS` kind only they used.
 SDK- and framework-level rows that are name-stable across apps stay. Root and tamper hiding moved to
-a separate module the same day.
+rootcheck-haters (https://github.com/morkin1792/rootcheck-haters) the same day.
 
 ### The deferred-load edge is libdl.so's own linker slots, not the importers' (2026-11-03)
 

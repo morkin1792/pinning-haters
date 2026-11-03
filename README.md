@@ -36,7 +36,7 @@ KernelSU + Zygisk Next 1.5.0):
   The `balanced` and `compat` tiers have no backend yet; selecting them changes only what the
   coverage log says ([docs/stealth-tiers.md](docs/stealth-tiers.md)).
 - The module hides its own mapping (`hide.self_remap`). The host's `libzygisk.so` stays visible by path on Zygisk Next 1.4.5; that is the one injection trace a generic detector finds in a targeted app ([docs/known-limitations.md](docs/known-limitations.md)).
-- TLS only. Root and tamper hiding (RASP verdicts, root-indicator probes) moved to a separate module; this one does not touch them.
+- TLS only. Root and tamper hiding (RASP verdicts, root-indicator probes) moved to [rootcheck-haters](https://github.com/morkin1792/rootcheck-haters); this one does not touch them.
 - `tests/test-app` builds and runs (`tools/device_test.sh testapp`): every check passes on both devices, including a packed (DexHelper) app whose unpacked DEX is patched like any other.
 
 Do not rely on it for an engagement until the manual matrix in `docs/testing.md` has been run.
@@ -101,6 +101,7 @@ If stealth is your priority, prefer a host that hides module libraries.
 3. On install, `customize.sh` creates `/data/adb/pinning_haters/config.json` with an inert default
    configuration (no packages) and `/data/adb/pinning_haters/log/`. `service.sh` re-asserts the
    permissions on every boot. Both are root-only (0700 directory, 0600 files).
+4. Pairs with [rootcheck-haters](https://github.com/morkin1792/rootcheck-haters) for root and tamper checks; install both, target the package in each.
 
 ## Nothing happens until you add a package
 
