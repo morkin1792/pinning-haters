@@ -86,8 +86,10 @@ testapp|integrity)
     adb shell "input tap $x $y; sleep $([ "$1" = testapp ] && echo 45 || echo 25); logcat -d -s pinning-haters-test:* | grep -E 'PASS|FAIL' | sed -E 's/^.*pinning-haters-test[^:]*: //' | cut -c1-140 | sort -u"
     # Put back whatever was set before ("null" means none).
     if [ -n "$proxy" ]; then
-        # `settings delete` leaves ConnectivityService on the old proxy; ":0" is what clears it.
-        if [ "$previous" = null ] || [ -z "$previous" ]; then adb shell "settings put global http_proxy :0" >/dev/null
+        # `settings delete` alone leaves ConnectivityService on the old proxy, and ":0" alone leaves
+        # global_http_proxy_host/port behind, which it re-applies on the next Wi-Fi reconnect.
+        if [ "$previous" = null ] || [ -z "$previous" ]; then
+            adb shell "settings delete global global_http_proxy_host; settings delete global global_http_proxy_port; settings put global http_proxy :0; sleep 2; settings delete global http_proxy" >/dev/null
         else adb shell "settings put global http_proxy $previous" >/dev/null; fi
     fi
     ;;

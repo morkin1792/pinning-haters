@@ -260,7 +260,25 @@ every package here. pinning-haters does not do this and will not.
 
 ## Building
 
-Requirements: Android NDK r26d or later (r27c is what the module has been built with), CMake 3.22+.
+Requirements: Android NDK r26d or later (r27c is what the module has been built with), CMake 3.22+,
+`python3`; Ninja is used when it is on `PATH`. No Android SDK is needed for the module itself.
+
+The flashable zip in one command:
+
+```sh
+export ANDROID_NDK_HOME=/path/to/android-ndk-r27c   # or ANDROID_NDK_ROOT
+tools/package.sh                                    # version from module/module.prop
+tools/package.sh v0.1.1                             # or name the version explicitly
+```
+
+It configures and builds `module/jni` for arm64-v8a (MinSizeRel, API 30), strips the library, stages
+`module.prop`, `customize.sh`, `service.sh`, `config.default.json`, `META-INF/`, `webroot/` and
+`zygisk/arm64-v8a.so` under `build/pkg/`, writes `build/pinning-haters-<version>.zip` and prints its
+SHA-256. Flash that zip from the root manager (see [Install](#install)), or push only the library to
+a test device with `PH_DEVICE=<serial> tools/device_test.sh install build/pkg/zygisk/arm64-v8a.so`,
+which replaces it through a new inode and reboots.
+
+The underlying build, if you want the library alone:
 
 ```sh
 cmake -S module/jni -B build/arm64 \
@@ -270,10 +288,9 @@ cmake -S module/jni -B build/arm64 \
 cmake --build build/arm64
 ```
 
-`tools/package.sh [version]` runs that build, strips the library and assembles the flashable zip
-(`module.prop`, `customize.sh`, `service.sh`, `zygisk/arm64-v8a.so`, `webroot/`). The CMake file
-refuses any ABI other than arm64-v8a. The `PH_DEBUG_LOGCAT` option additionally prints log lines to
-logcat for debug builds; never ship a build with it on.
+The CMake file refuses any ABI other than arm64-v8a. The `PH_DEBUG_LOGCAT` option additionally
+prints log lines to logcat for debug builds; never ship a build with it on. CI (`contract.yml`)
+builds the same zip on every push and attaches it as the `pinning-haters-module` artifact.
 
 Host-side tests (no device needed; need `javac` and `d8` via `D8`, `R8_JAR` or `ANDROID_HOME`):
 
