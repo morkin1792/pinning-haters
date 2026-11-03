@@ -3,11 +3,13 @@
 All notable changes to pinning-haters are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the module's `module.prop`.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-04
 
 First code-complete cut of Phase 1 (the `max` tier) plus the Phase 1.5 and Phase 2 work recorded
-below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the Status section of
-`README.md` and `docs/testing.md` for what the release matrix still needs.
+below. Verified on two devices (Android 11, APatch + Zygisk Next; Android 16, KernelSU + Zygisk
+Next). The release matrix in `docs/testing.md` asks for three Android versions; this tag ships on
+two, and Android 12 to 15 and Magisk as a host are still pending (see the Status section of
+`README.md`).
 
 ### Added
 

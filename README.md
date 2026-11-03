@@ -14,7 +14,7 @@ because nothing was changed. The ranking behind that choice is in [docs/detectio
 
 ## Status
 
-**Pre-release (v0.1.0, unreleased).** Phase 1 code is complete and the host-side tests pass; the
+**Pre-release (v0.1.0, 2026-11-04).** Phase 1 code is complete and the host-side tests pass; the
 module has been verified on **two devices** so far (Android 11 / APatch + Zygisk Next, Android 16 /
 KernelSU + Zygisk Next 1.5.0):
 
