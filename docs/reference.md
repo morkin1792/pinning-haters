@@ -238,7 +238,10 @@ cmake --build build/arm64
 
 The CMake file refuses any ABI other than arm64-v8a. The `PH_DEBUG_LOGCAT` option additionally
 prints log lines to logcat for debug builds; never ship a build with it on. CI (`contract.yml`)
-builds the same zip on every push and attaches it as the `pinning-haters-module` artifact.
+builds the same zip on every push and attaches it as the `pinning-haters-module` artifact. Pushing a
+`v*` tag runs `build.yml`: it builds the zip from the tagged commit, publishes a GitHub release named
+`pinning-haters <tag>` (pre-release while the tag starts with `v0.`) with the SHA-256 in its notes, and
+commits the new `zipUrl` to `module/update.json` on `main`.
 
 Host-side tests (no device needed; need `javac` and `d8` via `D8`, `R8_JAR` or `ANDROID_HOME`):
 

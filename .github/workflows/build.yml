@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { ref: main, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
       - uses: nttld/setup-ndk@v1
         id: ndk
         with: { ndk-version: r27c }
@@ -21,13 +21,28 @@ jobs:
         run: tools/package.sh "$GITHUB_REF_NAME"
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: release notes
+        run: |
+          zip=build/pinning-haters-$GITHUB_REF_NAME.zip
+          sum=$(sha256sum "$zip" | cut -d' ' -f1)
+          {
+            echo "Zygisk module that bypasses TLS certificate pinning and modifies no executable bytes at the default tier."
+            echo
+            echo "Flash the zip from your root manager, reboot, then add a package: the module is inert until one is named. See the [README](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/README.md) for the three steps and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed."
+            echo
+            echo "SHA-256 \`$(basename "$zip")\`: \`$sum\`"
+          } > build/notes.md
       - name: release
         uses: softprops/action-gh-release@v2
         with:
+          name: pinning-haters ${{ github.ref_name }}
           files: build/pinning-haters-*.zip
+          body_path: build/notes.md
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           generate_release_notes: true
       - name: point update.json at the release
         run: |
+          git checkout -B main origin/main
           code=$(sed -n 's/^versionCode=//p' module/module.prop)
           python3 - "$GITHUB_REF_NAME" "$code" <<'PY'
           import json, sys
