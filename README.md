@@ -34,8 +34,8 @@ for root.
 
 ## Install
 
-1. Download `pinning-haters-<version>.zip` from the Releases page, or build it with
-   `tools/package.sh` (see [docs/reference.md](docs/reference.md#building)).
+1. Download the latest zip from the [Releases page](https://github.com/morkin1792/pinning-haters/releases),
+   or build it with `tools/package.sh` (see [docs/reference.md](docs/reference.md#building)).
 2. Flash it from your root manager's module screen and reboot.
 
 The module is **inert until you add a package**. It never touches `system_server` and has no
