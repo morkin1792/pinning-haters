@@ -8,8 +8,9 @@ independently shippable. Phase 0.5 is blocking — do not start Phase 1.1 until 
 
 **Supersedes** the v1 plan. The strategic decisions (Zygisk, no Frida, no LSPosed, no Rust, ARM64,
 shadowhook available but not primary, GPL-3, monorepo, opt-in allowlist, no network) are unchanged.
-The hooking mechanics are substantially revised. `update1.md` and `update2.md` are absorbed into
-§2.3, §3.3, Phase 1.5 and Phase 2; they are kept on disk as source material.
+The hooking mechanics are substantially revised. Two pieces of source material (a 2025-08-15
+article on bypassing memory-versus-disk CRC checks of inline hooks, and a review note on foreign
+AOT runtimes) are absorbed into §2.3, §3.3, Phase 1.5 and Phase 2 and no longer kept on disk.
 
 ---
 
@@ -153,7 +154,7 @@ change code paths per target; it filters a data table. This keeps the "hooks are
 | **Needs CRC countermeasures (§Phase 2.1)** | no | yes | yes |
 
 The important property: at `max` there is **nothing for a text-CRC check to find**, so the whole
-CRC-defeat problem described in `update1.md` does not arise. CRC countermeasures only become
+CRC-defeat problem (memory-versus-disk CRC of a library's executable segment) does not arise. CRC countermeasures only become
 necessary at `balanced`, which is exactly why they live in Phase 2 and not Phase 1.
 
 ### 2.3 Configuration
@@ -886,7 +887,7 @@ Each item independently shippable.
 3. **Static stripped BoringSSL.** Pattern scan for the verification entry points in app-private libraries.
 4. **`OpenCommon` fallback** for any Android version where Phase 0.5 item 2 or 4 failed.
 5. **CRC countermeasures** become mandatory here, not optional — see Phase 2.1. A `balanced` build
-   without them is detectable by exactly the check `update1.md` describes.
+   without them is detectable by exactly the memory-versus-disk CRC check §2.1 defeats.
 6. **Additional Category A surfaces** as issues arrive: Certificate Transparency interceptors,
    Volley, gRPC-Java direct, `WebViewClient` patterns.
 7. **Android 10 (API 29)** backend, if it was dropped in Phase 1.
@@ -934,7 +935,7 @@ own library, whether modules are loaded through bionic (`loader=` in the init lo
 
 ### 2.1 — CRC countermeasures for inline hooks
 
-Required by `balanced`, not by `max`. The recipe, from `update1.md`, corrected and ordered:
+Required by `balanced`, not by `max`. The recipe, from the CRC-bypass article, corrected and ordered:
 
 1. Install the inline hooks.
 2. Dump the **post-hook** in-memory executable segment of each modified library.
