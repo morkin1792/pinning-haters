@@ -6,7 +6,7 @@ first thing to read before opening an issue, and the first thing maintainers wil
 
 ## Getting the lines
 
-1. Set `"log": { "enabled": true }` in `/data/adb/pinning_haters/config.json` (README, "Configuring").
+1. Set `"log": { "enabled": true }` in `/data/adb/pinning_haters/config.json` (`docs/reference.md`, "Configuring").
 2. Force-stop the app and start it again. Exercise the connection that fails.
 3. Read the newest file:
 

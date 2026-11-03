@@ -66,6 +66,10 @@ two, and Android 12 to 15 and Magisk as a host are still pending (see the Status
   KernelSU and APatch managers.
 - Documentation set under `docs/`.
 
+### Changed
+
+- `README.md` now covers install, targeting a package and reading the result; the mechanism summary, host table, configuration reference, log format and build commands moved to `docs/reference.md`.
+
 ### Removed
 
 - App- and build-specific rows (one app's network-library probes, Topaz Heartbeat letter wrappers from one build, one Kony build's exit dispatcher) and the `NOP_CALLS` kind they alone used: the module ships generic surfaces only.

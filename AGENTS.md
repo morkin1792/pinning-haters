@@ -531,7 +531,7 @@ makes three tiers survivable as the hook list grows.
 
 New hook target → update `docs/adding-hooks.md` if the workflow changed, and `docs/coverage.md` if a
 new `SurfaceId` appeared. New Android version → `docs/android-versions.md`. Config schema change →
-`examples/config.example.json` **and** `README.md`. New tier-gated capability →
+`examples/config.example.json` **and** `docs/reference.md`. New tier-gated capability →
 `docs/stealth-tiers.md`.
 
 Out-of-date docs in a security-sensitive project actively mislead users. Docs are part of the

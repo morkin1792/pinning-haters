@@ -308,7 +308,7 @@ Flutter and Unity, which are common.
 Installing the interception proxy's CA. For target packages the B1 wrap accepts any chain, so no CA
 installation is needed at all. For broad, non-targeted interception the user should install the CA as
 a system CA via a separate CA-cert module — that modifies no app process and is quieter than
-targeting every package here. `README.md` states this.
+targeting every package here. `docs/reference.md` states this.
 
 ---
 

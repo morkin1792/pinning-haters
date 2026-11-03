@@ -41,7 +41,7 @@ CRC-defeat problem is confined to the higher tiers.
   usual case: one hardened app whose surface needs an inline hook) or lower it (a package you want kept at `max`
   while experimenting globally). Everything else stays at the global value.
 - There is no way to set a tier for all apps at once that is louder than `max` except by changing
-  the global value, and the README warns against that. Escalate the one app that needs it.
+  the global value, and `docs/reference.md` warns against that. Escalate the one app that needs it.
 
 Mechanically, the tier is a **filter over a data table**: every entry in `targets_java.cpp` and
 `targets_native.cpp` carries a `min_tier`, and the hook manager installs an entry only when

@@ -216,7 +216,7 @@ better than a word.
 | New `SurfaceId` | `docs/coverage.md` surface table; `docs/adding-hooks.md` if the workflow changed |
 | New system-library edge | `docs/android-versions.md`; `tools/check_elf_contracts.sh` |
 | New tier-gated capability | `docs/stealth-tiers.md` |
-| Config schema change | `examples/config.example.json`, `README.md` config reference, `tests/host/test_config.cpp` |
+| Config schema change | `examples/config.example.json`, `docs/reference.md` config reference, `tests/host/test_config.cpp` |
 | New Android version | `docs/android-versions.md` |
 
 Out-of-date documentation in a security tool misleads users. Docs ship with the code change, in the
