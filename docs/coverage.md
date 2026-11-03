@@ -99,6 +99,11 @@ still gets `platform_tls`. The marker only says that the runtime's *own* TLS sta
 
 These lines are normal and are not errors:
 
+- After a `dlclose` in the process, the next load (at most once every 5 s) re-evaluates every
+  library (the evaluated set is keyed by load address, and a freed range can be reused), so
+  `applied=` lines for libraries hooked earlier are printed again. Slot rewrites are idempotent;
+  nothing is hooked twice.
+
 - **`present=no`** for most surfaces in most apps. The table covers many libraries; apps ship few.
 - **`aot ... reason=contract_missing`** for individual members of the stat/open/access family. The
   family is a candidate list; on any one Android version only some members are imported by some of

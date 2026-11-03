@@ -86,6 +86,8 @@ below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the
 
 - A React Native app carrying a protection SDK died with a null-pointer `SIGSEGV` about two seconds into every targeted launch, with every surface switched off and oat eviction disabled. The trigger was the deferred-load edge rewriting `dlopen` import slots inside the app's own libraries, the SDK's included, and the SDK verifies its `.got.plt`. The edge moved to `libdl.so`'s linker slots (above); the module writes no app-private GOT slot for it any more, and that app runs with every surface applied.
 
+- Review of the libdl edge (same day): the evaluated-library set is dropped when the linker's unload counter moves (at most once every 5 s), so a library mapped into an address range a `dlclose` freed is evaluated instead of being mistaken for the one that used to live there; `RTLD_NOLOAD` probes and `dlopen(NULL)` no longer trigger a re-scan; the bounded wait in the dlopen hooks uses `CLOCK_MONOTONIC` (a wall-clock step could stretch the 200 ms bound); the two libdl rows are marked load-bearing, so a missing `__loader_android_dlopen_ext` slot is a `contract_missing` line even when the `__loader_dlopen` slot was rewritten; `skip_consumers` now applies to GOT rows as well as pattern rows; the Go/Rust string markers skip Chromium's libraries like the table rows do.
+
 ### Known gaps in this release
 
 - ELF contracts verified host-side on API 30, 31, 33, 34, 35 and 36; nothing verified on a device.

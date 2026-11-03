@@ -10,6 +10,7 @@
 
 #include <elf.h>
 #include <pthread.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -45,7 +46,13 @@ struct IterCtx {
     void* ctx;
 };
 
-int iterate_cb(dl_phdr_info* info, size_t, void* data) {
+// dlpi_subs from the most recent walk: the linker bumps it on every dlclose, so a change means an
+// address range may have been freed and reused by a later load.
+unsigned long long g_unloads = 0;
+
+int iterate_cb(dl_phdr_info* info, size_t size, void* data) {
+    if (size >= offsetof(dl_phdr_info, dlpi_subs) + sizeof(info->dlpi_subs))
+        __atomic_store_n(&g_unloads, info->dlpi_subs, __ATOMIC_RELAXED);  // walks run on several threads
     auto* ic = static_cast<IterCtx*>(data);
     Library lib{};
     lib.bias = info->dlpi_addr;
@@ -202,6 +209,8 @@ void for_each_library(bool (*fn)(const Library&, void*), void* ctx) {
     IterCtx ic{fn, ctx};
     dl_iterate_phdr(iterate_cb, &ic);
 }
+
+unsigned long long unload_count() { return __atomic_load_n(&g_unloads, __ATOMIC_RELAXED); }
 
 bool find_library(const char* name, Library* out) {
     FindCtx fc{name, out, false};

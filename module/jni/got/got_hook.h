@@ -27,6 +27,8 @@ struct Library {
 
 // Reads dl_iterate_phdr (never hooks it). `fn` returns true to stop iterating.
 void for_each_library(bool (*fn)(const Library&, void*), void* ctx);
+// Linker unload counter as of the last for_each_library walk (dl_phdr_info::dlpi_subs).
+unsigned long long unload_count();
 // `name` is a basename ("libjavacrypto.so") or a full path; nullptr selects the main executable.
 bool find_library(const char* name, Library* out);
 // Address of the import slot for `symbol`, or nullptr when no edge exists (same-library call,

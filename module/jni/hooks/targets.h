@@ -36,7 +36,7 @@ enum class SurfaceId : uint8_t {
     GO_TLS,             // Go crypto/tls statically linked into an app library (gomobile); marker only
     RUST_TLS,           // rustls statically linked into an app library; marker only
     AOT,                // oat eviction / stat fallback
-    DEFERRED_LOAD,      // android_dlopen_ext edge for libraries loaded after specialize
+    DEFERRED_LOAD,      // libdl.so's __loader_dlopen / __loader_android_dlopen_ext slots: re-scan after every load
     COUNT
 };
 
@@ -115,7 +115,16 @@ struct NativeTarget {
     // GOT_IN_CONSUMER entries whose consumers are third-party libraries: a missing import is the
     // normal case (the SDK simply does not use that libc entry point), not a contract failure.
     bool optional_edge = false;
+    // The opposite: this slot is load-bearing on its own, so a missing import is a contract failure
+    // even when another row for the same surface was rewritten (the libdl pair: System.loadLibrary
+    // only ever reaches the android_dlopen_ext slot).
+    bool required_edge = false;
 };
+
+// Chromium's libraries carry a BoringSSL table but verify through a custom-verify callback (reached
+// through their Java verifier instead), and they are the largest libraries an app maps: the
+// wildcard table rows and the string markers both leave them alone.
+#define PH_CHROMIUM_LIBS "libwebviewchromium.so|libmonochrome*|libchrome*|libcronet.*|libtrichrome*"
 
 // Presence-only detection for runtimes we cannot reach at the current tier. Costs a string
 // compare over loaded library names, never a hook.

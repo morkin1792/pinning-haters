@@ -34,10 +34,12 @@ const NativeTarget kNativeTargets[] = {
     // cover all of them, and no app-private GOT is touched: protection SDKs check their own
     // .got.plt against .rela.plt and kill the app when a slot points outside libdl.
     {"ld-android.so", "__loader_dlopen", "libdl.so", FN(hooks::loader_dlopen_hook), &hooks::orig_loader_dlopen,
-     GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD, "every dlopen → re-evaluate native targets"},
+     GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD, "every dlopen → re-evaluate native targets", nullptr, nullptr,
+     false, true},
     {"ld-android.so", "__loader_android_dlopen_ext", "libdl.so", FN(hooks::loader_android_dlopen_ext_hook),
      &hooks::orig_loader_android_dlopen_ext, GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD,
-     "every android_dlopen_ext (System.loadLibrary included) → re-evaluate native targets"},
+     "every android_dlopen_ext (System.loadLibrary included) → re-evaluate native targets", nullptr, nullptr, false,
+     true},
     // vdex/odex probe fallback (aot.stat_hook_fallback). GOT writes in ART libraries, never libc.
     // API 34 imports: libartbase {stat, open, __open_2, access}, libart {stat, open, access};
     // fstatat/openat are kept as candidates for future ART releases.
@@ -93,14 +95,14 @@ const NativeTarget kNativeTargets[] = {
      &boringssl_table::install},
     {"<app-private library>", "ssl_crypto_x509_session_verify_cert_chain", nullptr, nullptr, nullptr, PATTERN, Tier::MAX,
      SurfaceId::STATIC_BORINGSSL, "statically linked BoringSSL in an app-private library (x509 method table)",
-     &boringssl_table::install, "libwebviewchromium.so|libmonochrome*|libchrome*|libcronet.*|libtrichrome*"},
+     &boringssl_table::install, PH_CHROMIUM_LIBS},
     // Statically linked OpenSSL: no x509 method table, but the SSL_METHOD the handshake runs through
     // is a RELRO table too; its ssl_connect member is swapped for a wrapper that relaxes the verify
     // mode around the real connect. Found through the library's exports, so a hidden-visibility
     // build reports pattern_not_found. Same primitive class as the row above.
     {"<app-private library>", "ssl_connect", nullptr, nullptr, nullptr, PATTERN, Tier::MAX, SurfaceId::STATIC_OPENSSL,
      "statically linked OpenSSL in an app-private library (SSL_METHOD table)", &openssl_table::install,
-     "libwebviewchromium.so|libmonochrome*|libchrome*|libcronet.*|libtrichrome*|libflutter.so"},
+     PH_CHROMIUM_LIBS "|libflutter.so"},
 };
 const size_t kNativeTargetCount = sizeof(kNativeTargets) / sizeof(kNativeTargets[0]);
 

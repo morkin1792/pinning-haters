@@ -416,6 +416,7 @@ build configuration, so each one gets a mechanical assertion rather than a comme
 ```bash
 readelf -r libjavacrypto.so | grep -E 'SSL_(CTX_)?set_custom_verify'   # platform TLS wrap
 readelf -r libdexfile.so    | grep adler32                            # DEX interception
+readelf -r libdl.so         | grep -E '__loader_(dlopen|android_dlopen_ext)'  # deferred loads
 readelf -r libart.so libartbase.so libdexfile.so | grep -E '\bstat(64)?\b|fstatat64'  # vdex probe
 ```
 
@@ -424,8 +425,9 @@ device. This is why v1's §1.5.5 "version compatibility automation" was promoted
 Phase 1 — it is not a nice-to-have when the default tier depends on the contracts holding.
 
 `tools/reference-libs/` is **gitignored** — do not commit Google's binaries. It holds `libart.so`,
-`libartbase.so`, `libdexfile.so`, `libjavacrypto.so` and `libssl.so` per API level, not just libart,
-because our contracts span all five.
+`libartbase.so`, `libdexfile.so`, `libnativeloader.so`, `libjavacrypto.so`, `libssl.so` and, from
+the runtime (bionic) APEX, `libdl.so` per API level, not just libart, because our contracts span
+all of them (2026-11-03: `libdl.so` carries C3).
 
 Extraction from Pixel factory images (`developers.google.com/android/images`):
 
@@ -435,7 +437,8 @@ Extraction from Pixel factory images (`developers.google.com/android/images`):
 4. `sudo mount -o loop,ro system.raw.img /mnt/sysimg`.
 5. ART libraries: `/mnt/sysimg/apex/com.android.art/lib64/` (or `com.android.runtime` on early
    Android 10/11 — both names exist transitionally). Conscrypt:
-   `/mnt/sysimg/apex/com.android.conscrypt/lib64/`.
+   `/mnt/sysimg/apex/com.android.conscrypt/lib64/`. bionic's `libdl.so`:
+   `/mnt/sysimg/apex/com.android.runtime/lib64/bionic/`.
 6. If the APEX is a `.apex` file (a zip containing an image): `unzip`, loop-mount `apex_payload.img`,
    pull from there.
 7. Save to `tools/reference-libs/<api-level>/`.

@@ -137,12 +137,30 @@ bool collect_cb(const got::Library& lib, void* ctx) {
     return false;
 }
 
+unsigned long long g_unloads_seen = 0;
+time_t g_last_reset = 0;
+constexpr time_t RESET_MIN_INTERVAL_S = 5;  // ponytail: a full re-pass at most this often; per-library revalidation if a loader churns
+
 // Snapshot first: hooking inside the dl_iterate_phdr callback would nest the linker's lock.
 void snapshot() {
     g_libs.count = 0;
     g_libs.truncated = false;
     got::for_each_library(collect_cb, &g_libs);
     if (g_libs.truncated) PH_LOGW("[init] more than %zu libraries loaded; later ones were not evaluated", MAX_LIBS);
+    // The evaluated set is keyed by load bias. A dlclose frees a range the next load can reuse, and
+    // a library mapped there would be skipped with its slots never rewritten; any unload since the
+    // last walk invalidates the whole set (slot rewrites are idempotent, so a re-pass is only cost).
+    // Rate-limited so a loader that opens and closes libraries in a loop costs one re-pass per
+    // interval, not one per iteration; coverage catches up at the next load after the interval.
+    if (got::unload_count() != g_unloads_seen) {
+        timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec - g_last_reset >= RESET_MIN_INTERVAL_S) {
+            g_last_reset = now.tv_sec;
+            g_unloads_seen = got::unload_count();
+            g_evaluated_count = 0;
+        }
+    }
 }
 
 bool name_matches(const char* pattern, const char* basename) {
@@ -232,9 +250,9 @@ int install_target(const NativeTarget& t, const got::Library* libs, size_t count
     int hooked = 0;
     for (size_t i = 0; i < count; i++) {
         if (!consumer_matches(t, libs[i])) continue;
+        if (t.skip_consumers && name_in_list(t.skip_consumers, got::basename_of(libs[i].path))) continue;
         if (t.style == HookStyle::PATTERN) {
             if (!t.consumer_library && claimed_by_named_pattern_entry(got::basename_of(libs[i].path))) continue;
-            if (t.skip_consumers && name_in_list(t.skip_consumers, got::basename_of(libs[i].path))) continue;
             switch (t.pattern(libs[i])) {
                 case PatternResult::APPLIED:
                     hooked++;
@@ -288,7 +306,7 @@ void report_native(const NativeTarget& t, int hooked, bool present, const char* 
         // BoringSSL built differently (or an OpenSSL, which shares the strings and has no table).
         log::coverage(t.surface, "present=yes reachable=no reason=pattern_not_found target=%s%s%s", t.symbol,
                       lib_hint ? " lib=" : "", lib_hint ? lib_hint : "");
-    else if (t.consumer_library && (surface_hooked || t.optional_edge))
+    else if (t.consumer_library && !t.required_edge && (surface_hooked || t.optional_edge))
         PH_LOGD("[%s] optional edge %s not imported by %s", surface_name(t.surface), t.symbol, t.consumer_library);
     else if (t.consumer_library)
         // The consumer library is loaded but has no import slot for the symbol: the ELF contract
@@ -304,8 +322,10 @@ void check_markers(const got::Library* libs, size_t count, bool seen[SURFACES]) 
             const char* base = got::basename_of(libs[i].path);
             if (marker.needle) {
                 // String markers look only at the app's own libraries (never at this module, whose
-                // table carries the needles), and name the library they found the string in.
+                // table carries the needles), and name the library they found the string in. Chromium's
+                // 100+ MB libraries never carry a Go or Rust stack and are not worth two scans each.
                 if (!got::is_app_private(libs[i].path) || libs[i].bias == self_base()) continue;
+                if (name_in_list(PH_CHROMIUM_LIBS, base)) continue;
                 if (!got::segments_contain(libs[i], marker.needle)) continue;
             } else if (!name_matches(marker.library, base)) {
                 continue;
@@ -420,14 +440,15 @@ void on_library_loaded(const char* path) {
     if (!g_installed) return;
     __atomic_store_n(&g_rescan_pending, true, __ATOMIC_SEQ_CST);
     for (;;) {
+        // Monotonic: a wall-clock step while a dlopen waits here must not stretch the bound.
         timespec deadline;
-        clock_gettime(CLOCK_REALTIME, &deadline);
+        clock_gettime(CLOCK_MONOTONIC, &deadline);
         deadline.tv_nsec += 200 * 1000 * 1000;
         if (deadline.tv_nsec >= 1000000000) {
             deadline.tv_sec++;
             deadline.tv_nsec -= 1000000000;
         }
-        if (pthread_mutex_timedlock(&g_lock, &deadline) != 0) return;  // the holder picks it up
+        if (pthread_mutex_clocklock(&g_lock, CLOCK_MONOTONIC, &deadline) != 0) return;  // the holder picks it up
         while (__atomic_exchange_n(&g_rescan_pending, false, __ATOMIC_SEQ_CST)) rescan_locked(path);
         pthread_mutex_unlock(&g_lock);
         // A request that arrived between the last exchange and the unlock would otherwise be lost.
@@ -446,17 +467,20 @@ void on_library_loaded(const char* path) {
 void* orig_loader_dlopen = nullptr;
 void* orig_loader_android_dlopen_ext = nullptr;
 
+// RTLD_NOLOAD probes and dlopen(NULL) cannot map anything new, and SDKs issue them in bulk.
+bool may_have_loaded(const char* path, int flags) { return path != nullptr && !(flags & RTLD_NOLOAD); }
+
 void* loader_dlopen_hook(const char* path, int flags, const void* caller_addr) {
     using fn = void* (*)(const char*, int, const void*);
     void* handle = reinterpret_cast<fn>(orig_loader_dlopen)(path, flags, caller_addr);
-    if (handle) on_library_loaded(path);
+    if (handle && may_have_loaded(path, flags)) on_library_loaded(path);
     return handle;
 }
 
 void* loader_android_dlopen_ext_hook(const char* path, int flags, const void* extinfo, const void* caller_addr) {
     using fn = void* (*)(const char*, int, const void*, const void*);
     void* handle = reinterpret_cast<fn>(orig_loader_android_dlopen_ext)(path, flags, extinfo, caller_addr);
-    if (handle) on_library_loaded(path);
+    if (handle && may_have_loaded(path, flags)) on_library_loaded(path);
     return handle;
 }
 
