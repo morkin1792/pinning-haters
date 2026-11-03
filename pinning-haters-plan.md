@@ -845,6 +845,13 @@ slower app start caused by oat eviction, and Magisk's visible module mapping.
 
 ### 1.16 — Phase 1 exit criteria
 
+> **Status (2026-11-03).** Met: 1 (host-side on 30–36, C3 also on a device), 4 (both devices),
+> 6 (`exec_bytes PASS` on both), 7 (Android 11 and 16), 8 for APatch. Partly met: 2 and 3 (KernelSU +
+> Zygisk Next on Android 16 and APatch + Zygisk on Android 11; Magisk and Android 12–15 untested),
+> 5 (the HTTP Toolkit demo, a Flutter bank app, a React Native app with a protection SDK; no F-Droid
+> app yet), 9 (automated launch churn: 10.5 h, 4 h, 2 h and a 20-minute 60-second-interval run; no
+> hands-on day), 10 (docs track the code; the release checklist in `docs/testing.md` is open).
+
 1. Phase 0.5 contracts pass on API 30–36, recorded in `docs/android-versions.md`.
 2. Installs cleanly on Magisk, KernelSU+ZygiskNext, APatch+Zygisk.
 3. Test matrix passes on Android 11, 12, 13, 14, 15.

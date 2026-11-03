@@ -16,7 +16,10 @@
 # locked and no ordinary app can start. Screen off afterwards is fine.
 hours=$1; interval=$2; shift 2
 log=/data/local/tmp/ph-stability.log
-end=$(( $(date +%s) + hours * 3600 ))
+# First argument is hours, or minutes with an "m" suffix (20m): the failure modes this run looks for
+# scale with launches, not wall time, so a short interval over 20 minutes exercises the same paths.
+case "$hours" in *m) secs=$(( ${hours%m} * 60 ));; *) secs=$(( hours * 3600 ));; esac
+end=$(( $(date +%s) + secs ))
 tomb() { ls /data/tombstones 2>/dev/null | grep -c '^tombstone_[0-9]*$'; }
 comp() { ps -A -o PID,ARGS | awk '/companion/ && /pinning_haters/ {print $1; exit}'; }
 echo ph_stability > /sys/power/wake_lock 2>/dev/null

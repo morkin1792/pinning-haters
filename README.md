@@ -14,16 +14,22 @@ because nothing was changed. The ranking behind that choice is in [docs/detectio
 
 ## Status
 
-**Pre-release (v0.1.0, unreleased).** Phase 1 code is complete and the host-side tests pass, but
-the module has been verified on **one device** so far:
+**Pre-release (v0.1.0, unreleased).** Phase 1 code is complete and the host-side tests pass; the
+module has been verified on **two devices** so far (Android 11 / APatch + Zygisk Next, Android 16 /
+KernelSU + Zygisk Next 1.5.0):
 
 - Host-side ELF contracts hold on every supported API level (30, 31, 33, 34, 35, 36), checked
   against real ART and conscrypt libraries ([docs/android-versions.md](docs/android-versions.md)).
 - The three on-device checks the design rests on (the verifier interception fires, the conscrypt
   wrap completes a handshake with the app's `TrustManager` still invoked, oat eviction holds for
-  the launch) pass on Android 11 / APatch + Zygisk Next, together with the zero-modified-executable-
-  bytes check, the HTTP Toolkit pinning demo and a WebView load of an untrusted root ([docs/android-versions.md](docs/android-versions.md)). Other releases and hosts are
-  pending.
+  the launch) pass on both devices, together with the zero-modified-executable-bytes check, the
+  HTTP Toolkit pinning demo and a WebView load of an untrusted root
+  ([docs/android-versions.md](docs/android-versions.md)). The oat artifacts a dexopt job regenerates
+  are evicted again at the next launch on both. Android 12 to 15 and Magisk as a host are pending.
+- A React Native app carrying a protection SDK runs targeted at `max` on Android 16 with its pinned
+  API traffic through the proxy. Its guard killed the app until the deferred-load edge moved from
+  the app's own libraries into `libdl.so`; the module writes no app-private GOT slot for that edge
+  any more.
 - Flutter's bundled BoringSSL, and any other statically linked BoringSSL in an app-private library,
   is reached at `max` by swapping a pointer in its `ssl_crypto_x509_method` table (verified on the
   HTTP Toolkit demo and the Flutter bank app, Android 11; locator checked against WebRTC, OpenTok and Brella builds).
@@ -31,7 +37,7 @@ the module has been verified on **one device** so far:
   coverage log says ([docs/stealth-tiers.md](docs/stealth-tiers.md)).
 - The module hides its own mapping (`hide.self_remap`). The host's `libzygisk.so` stays visible by path on Zygisk Next 1.4.5; that is the one injection trace a generic detector finds in a targeted app ([docs/known-limitations.md](docs/known-limitations.md)).
 - TLS only. Root and tamper hiding (RASP verdicts, root-indicator probes) moved to a separate module; this one does not touch them.
-- `tests/test-app` builds and runs (`tools/device_test.sh testapp`): every check passes on the device above, including a packed (DexHelper) app whose unpacked DEX is patched like any other.
+- `tests/test-app` builds and runs (`tools/device_test.sh testapp`): every check passes on both devices, including a packed (DexHelper) app whose unpacked DEX is patched like any other.
 
 Do not rely on it for an engagement until the manual matrix in `docs/testing.md` has been run.
 

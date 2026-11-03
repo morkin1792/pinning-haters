@@ -90,8 +90,15 @@ below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the
 
 ### Known gaps in this release
 
-- ELF contracts verified host-side on API 30, 31, 33, 34, 35 and 36; nothing verified on a device.
-- On-device verification (Phase 0.5 items 4 to 6) done on Android 11 / APatch + Zygisk Next only.
-- `INLINE_IN_PROVIDER` and `PATTERN` hook styles have no backend (shadowhook is not vendored);
-  the Flutter entry is in the table for coverage reporting only.
-- `tests/test-app` is source only: written, never built or run (needs the Android SDK).
+- Release matrix: passes on Android 11 (APatch + Zygisk Next) and Android 16 (KernelSU + Zygisk
+  Next 1.5.0) only; Android 12 to 15 and Magisk as a host are untested.
+- Real apps with enforced pins verified end to end: the HTTP Toolkit demo and a Flutter bank app on
+  Android 11, a React Native app carrying a protection SDK on Android 16. The plan asks for three
+  F-Droid apps.
+- `INLINE_IN_PROVIDER` has no backend (shadowhook is not vendored); no table row needs it today.
+  `balanced` and `compat` change only what the coverage log says.
+- Stability evidence is automated launch churn (`tools/stability_ondevice.sh`: clean stretches of
+  10.5 h, 4 h and 2 h on earlier builds, a 20-minute 60-second-interval run on the release
+  candidate), not 24 hours of hands-on use.
+- WebUI verified in the APatch manager only; KernelSU's manager and the Magisk JSON path are not
+  recorded.

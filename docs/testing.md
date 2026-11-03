@@ -82,7 +82,7 @@ NeoZygisk is API-compatible with ZygiskNext for our purposes and may substitute 
 | Android 13 (API 33) | pending | pending | pending |
 | Android 14 (API 34) | pending | pending | pending |
 | Android 15 (API 35) | pending | pending | pending |
-| Android 16 (API 36) | pending | **passed 2026-11-02** (Mi 9T custom ROM, KernelSU + SUSFS, Zygisk Next 1.5.0; test app with no proxy straight to an untrusted root: every expected verdict incl. WebView and OpenSSL 3.4.1 through both tables, `exec_bytes PASS` over 380 mappings; Flutter swap applied in a real app; 24 h run not yet) | pending |
+| Android 16 (API 36) | pending | **passed 2026-11-02/03** (Mi 9T custom ROM, KernelSU + SUSFS, Zygisk Next 1.5.0; test app with no proxy straight to an untrusted root: every expected verdict incl. WebView and OpenSSL 3.4.1 through both tables, `exec_bytes PASS` over 380 mappings; Flutter swap applied in a real app; `bg-dexopt` survival: artifacts regenerated with `pm compile`, `oat_evicted=2` at the next launch, `okhttp_pinner` PASS; a React Native app with a protection SDK targeted through Burp; launch-churn stability runs clean, 20-minute 60-second-interval run on the release candidate) | pending |
 
 **`tools/device_test.sh`** wraps the per-device steps below so the matrix can be re-run on a new phone
 in minutes: `install` (through a new inode, then reboot and unlock), `config`, `log`, `testapp`
@@ -116,10 +116,12 @@ hosts. Update this table in the release PR.
 5. Add a Flutter sample app. Confirm the `flutter` line says `reachable=yes applied=1` at `max`,
    and that its traffic passes through an untrusted interception (Flutter ignores the system proxy:
    `tools/device_test.sh dnat` or a VPN-based transparent proxy).
-6. **`bg-dexopt` survival** (plan §1.16 item 7): with the test app targeted, run
-   `adb shell cmd package bg-dexopt-job` (or wait for the overnight job), confirm the oat artifacts
-   were regenerated, force-stop and relaunch, confirm `[init]` shows `oat_evicted > 0` and the
-   `okhttp_pinner` bypass still works.
+6. **`bg-dexopt` survival** (plan §1.16 item 7): with the test app targeted, regenerate its oat
+   artifacts the way the nightly job does (`pm compile -m speed-profile -f <pkg>` for one package,
+   or `cmd package bg-dexopt-job` for all of them), confirm `oat/arm64/base.{odex,vdex}` exist,
+   force-stop and relaunch, confirm `[init]` shows `oat_evicted > 0`, the directory is empty again
+   and the `okhttp_pinner` bypass still works. A `verify`-filter vdex is the dangerous case: it
+   carries `VerifierDeps`, so without eviction the interception would never fire.
 7. **Stability**: 24 hours of normal use with the targets configured, no crashes attributable to the
    module (check `logcat -b crash` and tombstones). `tools/stability_run.sh 24 1800 <pkg>...`
    covers the automated half: it relaunches each target every interval and records liveness, crash
@@ -128,10 +130,14 @@ hosts. Update this table in the release PR.
    same loop running as root on the phone, so the cable can be unplugged: it holds a CPU wakelock,
    exempts the test app from Doze, starts it with `--ez run true` so every round runs the checks,
    and writes `/data/local/tmp/ph-stability.log`. Unlock once after a reboot before starting it.
+   The compressed form is `stability_ondevice.sh 20m 60 <pkg>...`: what the loop can find
+   (companion state across requests, the log pipe, eviction on every launch, hooks across process
+   lifetimes) scales with launches, not hours, so a 20-minute run at a 60-second interval covers
+   the same paths; the 24 hours of hands-on use remain the criterion before a tag.
 
 ### What `tests/test-app` must exercise
 
-Source in `tests/test-app` (plain Java, OkHttp 4.12; not built or run yet). One APK contains all
+Source in `tests/test-app` (plain Java, OkHttp 4.12; built by `tests/test-app/build_manual.sh` and CI). One APK contains all
 four of the things that distinguish this architecture; an app where everything passes teaches
 nothing about the tier boundaries.
 
