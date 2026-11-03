@@ -77,7 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: tools/reference-libs/${{ matrix.api }}
-          key: reference-libs-${{ matrix.api }}-v1
+          key: reference-libs-${{ matrix.api }}-v2  # v2: adds libdl.so
       - name: pull reference libraries from the AVD image
         if: steps.cache.outputs.cache-hit != 'true'
         run: |

@@ -99,9 +99,9 @@ boundaries; the rest are tier or phase boundaries with a planned path.
   ART skips `DexFileVerifier`, including a surviving vdex with `VerifierDeps`) is never seen by the
   `adler32` interception and is not patched. Oat eviction and the stat fallback exist to prevent the
   vdex case; `docs/coverage.md` explains how to tell when it happened.
-- **Native libraries loaded by other native code** (`dlopen` from C, not `System.loadLibrary`) are
-  not caught by the deferred-load hook. When such a case shows up, the fix is a GOT hook on
-  `android_dlopen_ext` in the loading library.
+- **Native libraries loaded without `libdl.so`** (a loader that calls the linker by hand or maps
+  ELF images itself) are not re-scanned. Everything that goes through `dlopen` /
+  `android_dlopen_ext`, from Java or from native code, is.
 - **Two different bundled TLS providers** in one process (two BoringSSL copies): the first one
   hooked wins for each symbol; the second is skipped with a warning, because the recorded original
   pointer can only belong to one provider.

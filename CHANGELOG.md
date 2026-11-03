@@ -18,7 +18,7 @@ below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the
 - The GOT rewriter also rewrites `GLOB_DAT` slots, consumer lists accept a trailing `*`, and `NativeTarget::optional_edge` keeps a consumer's missing imports out of the ladder.
 - `go_tls` and `rust_tls` markers: a Go `crypto/tls` or rustls stack statically linked into an app library is reported by the strings it carries, with the library named, so the ladder explains the failure instead of staying silent (`compat`, Phase 2; nothing is hooked).
 - `bundled_tls` DEX rows for a Conscrypt the app bundles or Play services installs (`verifyCertificateChain` → return): the platform wrap in libjavacrypto never sees those handshakes. Measured on API 30 that `ProviderInstaller` loads no second stack when the Conscrypt APEX is present, so the rows are for older devices and bundled builds.
-- `deferred_load` now also hooks `dlopen` / `android_dlopen_ext` in app-private libraries that import them, through the linker's `__loader_*` entry points with the caller's address: libraries opened by Dart FFI (`DynamicLibrary.open`), plugin hosts and SDK loaders were never re-scanned before.
+- `deferred_load` re-scans after every load in the process, not only after `System.loadLibrary`: the edge is `libdl.so`'s two import slots for the linker's `__loader_dlopen` / `__loader_android_dlopen_ext`, which every `dlopen` / `android_dlopen_ext` call passes through (Dart FFI's `DynamicLibrary.open`, plugin hosts, SDK loaders, packers). The caller address is forwarded unchanged, so names resolve in the real caller's namespace. Contract C3 and `test_got` check the slots on real `libdl.so` files; `tools/pull_reference_libs.sh` now pulls `libdl.so` from the runtime APEX.
 - `tools/device_test.sh` (install through a new inode, unlock, config, ladder log, test-app verdicts, demo buttons by text, TCP 443 redirect, mappings) and `tools/dex_callers.py` (call-site finder for diagnosing an app). The host suite gained `test_self_remap`.
 - `dart_pinning` targets at `max`: the Android-side `checkConnexion` of the Flutter `http_certificate_pinning` and `ssl_pinning_plugin` packages returns true. Gated by `surfaces.java_dex`; the `libapp.so` marker stays for pure-Dart comparisons.
 - `hide.self_remap` (default on): after hooking, the module re-maps its own four mappings into anonymous memory, so its path is gone from `/proc/self/maps`. A generic detector app on Zygisk Next 1.4.5 now reports only the host's `libzygisk.so` in a targeted app. Hooks, the executable-bytes check and the log pipe are unaffected.
@@ -44,8 +44,8 @@ below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the
 - App-bundled BoringSSL/OpenSSL targets hooked in the calling library: `SSL_CTX_set_verify`,
   `SSL_set_verify`, `SSL_CTX_set_custom_verify`, `SSL_set_custom_verify`,
   `SSL_CTX_set_cert_verify_callback`, `SSL_get_verify_result`, `X509_verify_cert`.
-- Deferred-load support: `android_dlopen_ext` import hooked in `libnativeloader.so` and `libart.so`;
-  native targets are re-evaluated after each `System.loadLibrary`.
+- Deferred-load support: native targets are re-evaluated after each library load (see the
+  `deferred_load` entry above for the edge).
 - Companion-side oat eviction (`/data/app/*/<pkg>-*/oat/*/*` plus oat artifacts under the app data
   directory) and an in-process fallback that hides oat artifacts from ART's `stat`/`open`/`access`
   imports.
@@ -81,6 +81,10 @@ below. Verified on one device so far (Android 11, APatch + Zygisk Next); see the
 - The oat fallback no longer hides a system or product partition's odex/vdex when its APK or jar has no `classes.dex` (dex-stripped ROMs), which would have left the code unloadable.
 - The deferred-load rescan could deadlock against the linker's lock when a library constructor reached a hooked `dlopen`; the wait is now bounded and the rescan handed to the lock holder.
 - Smaller: `open(…, O_DIRECTORY)` no longer reads a mode argument that was never passed; the WebUI no longer breaks on a config without a `hide` section (every config from before that option).
+
+### Fixed (2026-11-03)
+
+- A React Native app carrying a protection SDK died with a null-pointer `SIGSEGV` about two seconds into every targeted launch, with every surface switched off and oat eviction disabled. The trigger was the deferred-load edge rewriting `dlopen` import slots inside the app's own libraries, the SDK's included, and the SDK verifies its `.got.plt`. The edge moved to `libdl.so`'s linker slots (above); the module writes no app-private GOT slot for it any more, and that app runs with every surface applied.
 
 ### Known gaps in this release
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Pull the ART and conscrypt APEX libraries out of an Android system image without root.
+"""Pull the ART, conscrypt and bionic (libdl) APEX libraries out of an Android system image without root.
 
 Usage: extract_apex_libs.py <system.img> <dest-dir>
 
@@ -25,8 +25,12 @@ import re
 # directories on some emulator builds. Match by regex over the directory listing.
 ART_APEX = re.compile(r"^(com\.google\.android|com\.android)\.(art|runtime)(\.(release|debug))?$")
 CONSCRYPT_APEX = re.compile(r"^(com\.google\.android|com\.android)\.conscrypt$")
+# bionic lives in the runtime APEX on every supported release; libdl.so carries the deferred-load
+# contract (its __loader_* import slots).
+RUNTIME_APEX = re.compile(r"^(com\.google\.android|com\.android)\.runtime(\.(release|debug))?$")
 ART_LIBS = ["libart.so", "libartbase.so", "libdexfile.so", "libnativeloader.so"]
 CONSCRYPT_LIBS = ["libjavacrypto.so", "libssl.so", "libcrypto.so"]
+RUNTIME_LIBS = ["bionic/libdl.so"]  # paths under lib64/; saved under dest by basename
 EXT4_MAGIC = b"\x53\xef"
 EROFS_MAGIC = b"\xe2\xe1\xf5\xe0"
 
@@ -135,7 +139,7 @@ def payload_libs(payload, libs, dest, tmp):
     got = []
     if kind == "ext4":
         for lib in libs:
-            if dump(payload, 0, f"/lib64/{lib}", os.path.join(dest, lib)):
+            if dump(payload, 0, f"/lib64/{lib}", os.path.join(dest, os.path.basename(lib))):
                 got.append(lib)
     elif kind == "erofs":
         if not shutil.which("fsck.erofs"):
@@ -145,7 +149,7 @@ def payload_libs(payload, libs, dest, tmp):
         for lib in libs:
             src = os.path.realpath(os.path.join(out, "lib64", lib))
             if os.path.isfile(src):
-                shutil.copy(src, os.path.join(dest, lib))
+                shutil.copy(src, os.path.join(dest, os.path.basename(lib)))
                 got.append(lib)
     else:
         sys.exit(f"unknown APEX payload filesystem in {payload}")
@@ -185,7 +189,7 @@ def extract_apex(img, off, apex_dir, pattern, libs, dest, tmp):
             if got:
                 return name, got
         elif kind == "directory" and entry_type(img, off, f"{path}/lib64") == "directory":
-            got = [lib for lib in libs if dump(img, off, f"{path}/lib64/{lib}", os.path.join(dest, lib))]
+            got = [lib for lib in libs if dump(img, off, f"{path}/lib64/{lib}", os.path.join(dest, os.path.basename(lib)))]
             if got:
                 return name + " (flattened)", got
     return None, []
@@ -200,7 +204,8 @@ def main():
     print(f"system filesystem at offset {off:#x}, APEX dir {apex_dir}")
     tmp = tempfile.mkdtemp(prefix="apexlibs-")
     try:
-        for pattern, libs, tag in ((ART_APEX, ART_LIBS, "art"), (CONSCRYPT_APEX, CONSCRYPT_LIBS, "conscrypt")):
+        for pattern, libs, tag in ((ART_APEX, ART_LIBS, "art"), (CONSCRYPT_APEX, CONSCRYPT_LIBS, "conscrypt"),
+                                   (RUNTIME_APEX, RUNTIME_LIBS, "runtime")):
             found, got = extract_apex(img, off, apex_dir, pattern, libs, dest, tmp)
             print(f"{tag}: {found or 'NOT FOUND'} -> {', '.join(got) or 'nothing'}")
             missing = sorted(set(libs) - set(got))
@@ -208,7 +213,7 @@ def main():
                 print(f"  missing: {', '.join(missing)}", file=sys.stderr)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    bad = [lib for lib in ART_LIBS + CONSCRYPT_LIBS
+    bad = [lib for lib in map(os.path.basename, ART_LIBS + CONSCRYPT_LIBS + RUNTIME_LIBS)
            if os.path.isfile(os.path.join(dest, lib)) and open(os.path.join(dest, lib), "rb").read(4) != b"\x7fELF"]
     if bad:
         sys.exit(f"not ELF: {bad}")

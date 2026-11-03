@@ -50,8 +50,6 @@ const char* surface_name(SurfaceId id) {
 
 namespace hooks {
 
-void* orig_android_dlopen_ext = nullptr;
-
 namespace {
 
 constexpr int SURFACES = static_cast<int>(SurfaceId::COUNT);
@@ -437,47 +435,27 @@ void on_library_loaded(const char* path) {
     }
 }
 
-void* android_dlopen_ext_hook(const char* path, int flags, const void* extinfo) {
-    const auto orig = reinterpret_cast<void* (*)(const char*, int, const void*)>(orig_android_dlopen_ext);
-    void* handle = orig(path, flags, extinfo);
+// libdl.so's dlopen and android_dlopen_ext are thin wrappers: `__loader_dlopen(name, flags,
+// __builtin_return_address(0))` into the linker, called through libdl's own import slots. Every
+// load in the process ends there — libnativeloader's System.loadLibrary, Dart FFI's
+// DynamicLibrary.open in libflutter.so, SDK loaders, packers, libc itself — so two slots in one
+// system library cover them all, and the caller address is forwarded untouched, so the name is
+// resolved in exactly the namespace the real caller would get. The earlier design rewrote `dlopen`
+// in every app-private importer instead; protection SDKs verify their own .got.plt against
+// .rela.plt, and one of them killed the app when its slot pointed outside libdl (2026-11-03).
+void* orig_loader_dlopen = nullptr;
+void* orig_loader_android_dlopen_ext = nullptr;
+
+void* loader_dlopen_hook(const char* path, int flags, const void* caller_addr) {
+    using fn = void* (*)(const char*, int, const void*);
+    void* handle = reinterpret_cast<fn>(orig_loader_dlopen)(path, flags, caller_addr);
     if (handle) on_library_loaded(path);
     return handle;
 }
 
-void* orig_app_dlopen = nullptr;
-void* orig_app_dlopen_ext = nullptr;
-
-namespace {
-
-// libdl's dlopen is `__loader_dlopen(name, flags, __builtin_return_address(0))`: the caller address
-// picks the namespace the name is searched in. Calling libdl's wrapper from here would make *us*
-// the caller — an anonymous mapping in no namespace — and a bare "libts.so" would then be looked
-// up in the default namespace and fail. The linker's entry points are read out of libdl's own
-// import slots, so no symbol lookup through a namespace is needed to find them.
-using loader_dlopen_fn = void* (*)(const char*, int, const void*);
-using loader_dlopen_ext_fn = void* (*)(const char*, int, const void*, const void*);
-
-void* linker_entry(const char* symbol) {
-    got::Library libdl;
-    if (!got::find_library("libdl.so", &libdl)) return nullptr;
-    void** slot = got::find_slot(libdl, symbol);
-    return slot ? *slot : nullptr;
-}
-
-}  // namespace
-
-void* app_dlopen_hook(const char* path, int flags) {
-    static const auto loader = reinterpret_cast<loader_dlopen_fn>(linker_entry("__loader_dlopen"));
-    void* handle = loader ? loader(path, flags, __builtin_return_address(0))
-                          : reinterpret_cast<void* (*)(const char*, int)>(orig_app_dlopen)(path, flags);
-    if (handle) on_library_loaded(path);
-    return handle;
-}
-
-void* app_dlopen_ext_hook(const char* path, int flags, const void* extinfo) {
-    static const auto loader = reinterpret_cast<loader_dlopen_ext_fn>(linker_entry("__loader_android_dlopen_ext"));
-    void* handle = loader ? loader(path, flags, extinfo, __builtin_return_address(0))
-                          : reinterpret_cast<void* (*)(const char*, int, const void*)>(orig_app_dlopen_ext)(path, flags, extinfo);
+void* loader_android_dlopen_ext_hook(const char* path, int flags, const void* extinfo, const void* caller_addr) {
+    using fn = void* (*)(const char*, int, const void*, const void*);
+    void* handle = reinterpret_cast<fn>(orig_loader_android_dlopen_ext)(path, flags, extinfo, caller_addr);
     if (handle) on_library_loaded(path);
     return handle;
 }

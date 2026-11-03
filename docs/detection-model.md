@@ -43,10 +43,10 @@ implements `max` only.
   loaded by the host's own linker, so `dl_iterate_phdr` never listed us; on a bionic-loaded host the
   soinfo entry would still name the path (the init log says which case applies). An anonymous
   executable region is itself a weaker signal that a RASP can look for.
-- A handful of rewritten GOT slots in ART APEX and conscrypt APEX libraries: `adler32` in
-  `libdexfile.so`, `SSL_set_custom_verify` in `libjavacrypto.so`, `android_dlopen_ext` in
-  `libnativeloader.so` and `libart.so`, and the `stat`/`open`/`access` imports of the ART libraries
-  that carry them.
+- A handful of rewritten GOT slots in ART APEX, conscrypt APEX and bionic libraries: `adler32` in
+  `libdexfile.so`, `SSL_set_custom_verify` in `libjavacrypto.so`, `__loader_dlopen` and
+  `__loader_android_dlopen_ext` in `libdl.so`, and the `stat`/`open`/`access` imports of the ART
+  libraries that carry them.
 - Rewritten GOT slots in app-private libraries only if the app bundles its own `libssl`/`libcrypto`
   consumers.
 - Modified instruction bytes inside the app's own in-memory DEX, for the methods in the Java target

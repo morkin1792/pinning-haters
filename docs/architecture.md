@@ -131,7 +131,7 @@ re-scan after a deferred load hands back the real original instead of stacking.
 |---|---|---|---|
 | `SSL_set_custom_verify` (and `SSL_CTX_set_custom_verify`, when imported) | `libjavacrypto.so` | conscrypt APEX `libssl.so` | platform TLS wrap |
 | `adler32` | `libdexfile.so` | `libz.so` | DEX patch at verification |
-| `android_dlopen_ext` | `libnativeloader.so`, `libart.so` | `libdl.so` | deferred loads |
+| `__loader_dlopen`, `__loader_android_dlopen_ext` | `libdl.so` | the linker (`ld-android.so`) | deferred loads |
 | `stat`, `fstatat`, `open`, `__open_2`, `openat`, `access` | `libartbase.so`, `libart.so`, `libdexfile.so` | `libc.so` | oat-artifact hiding fallback (API 34 imports: `stat`, `open`, `__open_2`, `access`; the rest are candidates) |
 | `SSL_CTX_set_verify`, `SSL_set_verify`, `SSL_CTX_set_custom_verify`, `SSL_set_custom_verify`, `SSL_CTX_set_cert_verify_callback`, `SSL_get_verify_result` | every app-private library importing them | the app's `libssl.so` | bundled TLS |
 | `X509_verify_cert` | every app-private library importing it (typically the app's `libssl.so`) | the app's `libcrypto.so` | bundled TLS |
@@ -207,12 +207,20 @@ hidden, so boot-image files are untouched.
 
 ### Deferred loads
 
-`JavaVMExt::LoadNativeLibrary` goes through `libnativeloader`'s `OpenNativeLibrary` to
-`android_dlopen_ext` in `libdl.so`, a cross-library call with a slot in `libnativeloader.so` (and,
-on the versions where ART still calls it directly, in `libart.so`; both are candidates and both are
-hooked where present). After the original returns a handle, the manager re-runs the native table
-against just the new library and re-checks the runtime markers, on the thread that called
-`System.loadLibrary`. Native code that `dlopen`s another native library directly is not caught.
+`dlopen` and `android_dlopen_ext` are thin wrappers in `libdl.so`: each calls the linker's
+`__loader_dlopen` / `__loader_android_dlopen_ext` through libdl's own import slot, passing its
+caller's return address for namespace resolution. Those two slots are the edge. Every load in the
+process passes through them — `System.loadLibrary` (libnativeloader), Dart FFI's
+`DynamicLibrary.open` in `libflutter.so`, SDK loaders, packers, libc — so two writes in one system
+library cover them all. The replacement forwards the caller address untouched, and after the
+original returns a handle re-runs the native table against the libraries that are newly mapped
+(the named one and its `DT_NEEDED` chain) and re-checks the runtime markers, on the calling thread.
+
+An earlier design rewrote `android_dlopen_ext` in `libnativeloader.so` / `libart.so` and `dlopen`
+in every app-private library that imported it. The second part wrote into protection SDKs' own
+libraries, and those verify their `.got.plt` against `.rela.plt`: one of them killed the app with a
+null-pointer `SIGSEGV` two seconds into launch. The libdl slots reach strictly more loads with
+strictly fewer, quieter writes (2026-11-03).
 
 ## What is deliberately absent
 

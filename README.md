@@ -57,8 +57,10 @@ Do not rely on it for an engagement until the manual matrix in `docs/testing.md`
   an app's own build): one pointer in the library's own method table (`ssl_crypto_x509_method` for
   BoringSSL, the client `SSL_METHOD` for OpenSSL) is swapped in a data page. Still no executable
   bytes changed; the original verifier still runs.
-- **Libraries loaded later.** The `android_dlopen_ext` slot in `libnativeloader.so` (and
-  `libart.so`) re-runs the native scan after every `System.loadLibrary`.
+- **Libraries loaded later.** Two import slots in `libdl.so` (the linker's `__loader_dlopen` and
+  `__loader_android_dlopen_ext` entry points) re-run the native scan after every load, whether it
+  came from `System.loadLibrary`, Dart FFI or an SDK's own `dlopen`. No app-private GOT is touched
+  for this.
 - **Oat eviction.** ART ignores DEX bytes for methods it has already AOT-compiled, and skips the
   verifier when a vdex exists. The companion deletes the package's `.odex/.vdex/.art` files before
   the app starts, so the DEX path works at all, at the cost of a slower launch.

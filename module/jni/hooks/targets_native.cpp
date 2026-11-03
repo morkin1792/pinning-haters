@@ -28,19 +28,16 @@ const NativeTarget kNativeTargets[] = {
     // ---- ART contracts (Phase 0.5). Verified by tools/check_elf_contracts.sh against real libraries. ----
     {"libz.so", "adler32", "libdexfile.so", FN(dexi::adler32_hook), &dexi::orig_adler32, GOT_IN_CONSUMER, Tier::MAX,
      SurfaceId::JAVA_DEX, "DexFileVerifier::CheckHeader checksum: patch-at-verify choke point"},
-    // JavaVMExt::LoadNativeLibrary → libnativeloader OpenNativeLibrary → android_dlopen_ext. The
-    // slot is in libnativeloader on every supported release; libart is kept as a candidate.
-    {"libdl.so", "android_dlopen_ext", "libnativeloader.so|libart.so", FN(hooks::android_dlopen_ext_hook),
-     &hooks::orig_android_dlopen_ext, GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD,
-     "System.loadLibrary → re-evaluate native targets"},
-    // The same edge in app-private libraries: Dart FFI (libflutter.so imports dlopen), plugin hosts
-    // and SDK loaders open libraries without libnativeloader. Every app-private importer is hooked;
-    // most libraries import neither.
-    {"libdl.so", "dlopen", nullptr, FN(hooks::app_dlopen_hook), &hooks::orig_app_dlopen, GOT_IN_CONSUMER, Tier::MAX,
-     SurfaceId::DEFERRED_LOAD, "dlopen from an app library → re-evaluate native targets", nullptr, nullptr, true},
-    {"libdl.so", "android_dlopen_ext", nullptr, FN(hooks::app_dlopen_ext_hook), &hooks::orig_app_dlopen_ext,
-     GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD, "android_dlopen_ext from an app library → re-evaluate",
-     nullptr, nullptr, true},
+    // Deferred loads. Every dlopen in the process — System.loadLibrary through libnativeloader,
+    // Dart FFI through libflutter.so, SDK loaders, packers, libc — ends in libdl.so's wrappers,
+    // which call the linker through libdl's own import slots. Two slots in one system library
+    // cover all of them, and no app-private GOT is touched: protection SDKs check their own
+    // .got.plt against .rela.plt and kill the app when a slot points outside libdl.
+    {"ld-android.so", "__loader_dlopen", "libdl.so", FN(hooks::loader_dlopen_hook), &hooks::orig_loader_dlopen,
+     GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD, "every dlopen → re-evaluate native targets"},
+    {"ld-android.so", "__loader_android_dlopen_ext", "libdl.so", FN(hooks::loader_android_dlopen_ext_hook),
+     &hooks::orig_loader_android_dlopen_ext, GOT_IN_CONSUMER, Tier::MAX, SurfaceId::DEFERRED_LOAD,
+     "every android_dlopen_ext (System.loadLibrary included) → re-evaluate native targets"},
     // vdex/odex probe fallback (aot.stat_hook_fallback). GOT writes in ART libraries, never libc.
     // API 34 imports: libartbase {stat, open, __open_2, access}, libart {stat, open, access};
     // fstatat/openat are kept as candidates for future ART releases.

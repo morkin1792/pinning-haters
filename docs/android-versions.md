@@ -16,23 +16,25 @@ conscrypt lineage and is treated as 31 until checked.
 | C1 | `libjavacrypto.so` imports `SSL_set_custom_verify` (`R_AARCH64_JUMP_SLOT`) from the conscrypt APEX `libssl.so` | platform TLS wrap, the single most valuable hook | `platform_tls` reports `contract_missing`; everything validated through a `TrustManager` is unreached. Planned fallback (Phase 1.5): inline hook on `SSL_set_custom_verify` in the conscrypt `libssl.so` at `balanced`. |
 | C1b | `libjavacrypto.so` imports `SSL_CTX_set_custom_verify` | also wrapped when present | Not required. conscrypt uses the per-connection variant; the table entry exists in case a build imports both. A `contract_missing` line for this symbol is expected. |
 | C2 | `libdexfile.so` imports `adler32` from `libz.so` | DEX patching at verification | The Java path (`okhttp_pinner`, `hostname_verifier`) is unreached. Planned fallback: inline hook on `art::DexFileLoader::OpenCommon` at `balanced`. |
-| C3 | `libnativeloader.so` and/or `libart.so` imports `android_dlopen_ext` from `libdl.so` | deferred library loads | Native targets in libraries loaded after specialization are not installed; those loaded at specialization still are. |
+| C3 | `libdl.so` imports `__loader_dlopen` and `__loader_android_dlopen_ext` from the linker (`R_AARCH64_JUMP_SLOT`); every `dlopen` / `android_dlopen_ext` in the process goes through those two slots | deferred library loads (`System.loadLibrary`, Dart FFI, SDK loaders, packers) | Native targets in libraries loaded after specialization are not installed; those loaded at specialization still are. |
 | C4 | At least one of `stat`, `fstatat`, `open`, `__open_2`, `openat`, `access` is imported by at least one of `libartbase.so`, `libart.so`, `libdexfile.so` | the in-process oat-hiding fallback | The fallback is unavailable; companion-side eviction still works. Members that are not imported on a given version are expected to report `contract_missing`. |
 
 ## Host-side record (Phase 0.5 items 1 to 3)
 
-Checked with `tools/check_elf_contracts.sh` against `tools/reference-libs/<api>/` on 2026-10-24.
-"verified" means the relocation was found in the real library from that release. **All four
-contracts hold on every supported API level (30, 31, 33, 34, 35, 36).** Every row below comes from
-an arm64 `google_apis` AVD system image of that release, pulled with `tools/pull_reference_libs.sh`.
+Checked with `tools/check_elf_contracts.sh` against `tools/reference-libs/<api>/` on 2026-10-24;
+C3 re-checked on 2026-11-03 against `libdl.so` from the same images after the deferred-load edge
+moved there (the earlier `android_dlopen_ext` slots in `libnativeloader.so` / `libart.so` are no
+longer used). "verified" means the relocation was found in the real library from that release.
+**All four contracts hold on every supported API level (30, 31, 33, 34, 35, 36).** Every row below
+comes from an arm64 `google_apis` AVD system image of that release, pulled with
+`tools/pull_reference_libs.sh`.
 
 | Contract | API 30 (11) | API 31 (12) | API 33 (13) | API 34 (14) | API 35 (15) | API 36 (16) |
 |---|---|---|---|---|---|---|
 | C1 `SSL_set_custom_verify` in `libjavacrypto.so` | **verified** | **verified** | **verified** | **verified** | **verified** | **verified** |
 | C1b `SSL_CTX_set_custom_verify` in `libjavacrypto.so` | not imported (expected) | not imported (expected) | not imported (expected) | not imported (expected) | not imported (expected) | not imported (expected) |
 | C2 `adler32` in `libdexfile.so` | **verified** | **verified** | **verified** | **verified** (`adler32@ZLIB_NDK`, `NEEDED libz.so`) | **verified** | **verified** |
-| C3 `android_dlopen_ext` in `libnativeloader.so` | **verified** | **verified** | **verified** | **verified** | **verified** | **verified** |
-| C3 `android_dlopen_ext` in `libart.so` | **verified** | **verified** | **verified** | **verified** | **verified** | **verified** |
+| C3 `__loader_dlopen` + `__loader_android_dlopen_ext` in `libdl.so` | **verified** | **verified** | **verified** | **verified** | **verified** | **verified** (AVD and device) |
 | C4 `libartbase.so` stat/open family | `open`, `stat` | `open`, `stat` | `open`, `stat` | `open`, `stat` | `open`, `stat` | `open`, `stat` |
 | C4 `libart.so` stat/open family | `access`, `open`, `stat` | `access`, `open`, `stat` | `access`, `open`, `stat` | `access`, `open`, `stat` | `access`, `open`, `stat` | `access`, `open`, `stat` |
 | C4 `libdexfile.so` stat/open family | `open` | `open` | `open` | none imported | none imported | none imported |
@@ -68,8 +70,9 @@ APEX payloads taken from that image. Findings:
   `SSL_CTX_set_custom_verify`; conscrypt only uses the per-SSL variant. C1 holds.
 - `libdexfile.so`: `R_AARCH64_JUMP_SLOT` for `adler32` with symbol version `ZLIB_NDK`; `libz.so`
   is in `NEEDED`. C2 holds.
-- `android_dlopen_ext`: `JUMP_SLOT` in both `libnativeloader.so` and `libart.so`. C3 holds in both
-  candidates; both are hooked.
+- `libdl.so`: `JUMP_SLOT` for `__loader_dlopen` and `__loader_android_dlopen_ext`, both inside
+  `PT_GNU_RELRO`. C3 holds. (`android_dlopen_ext` is also a `JUMP_SLOT` in `libnativeloader.so` and
+  `libart.so`, the edge used before 2026-11-03; both wrappers end in the libdl slots.)
 - Stat/open family: `libartbase.so` imports `open` and `stat`; `libart.so` imports `access`, `open`
   and `stat`; `libdexfile.so` imports none of them; none of the three imports `openat`, `fstatat`
   or `fstatat`. C4 holds through `stat`/`open`/`access`. On this version the expected `aot`
@@ -290,10 +293,29 @@ check for the next run.
 A related exit criterion (plan §1.16 item 7): the bypass survives an overnight `bg-dexopt` cycle.
 Also pending; procedure in `docs/testing.md`.
 
+### A protection SDK versus the deferred-load edge (2026-11-03, Mi 9T, API 36)
+
+A React Native app that ships a protection SDK (anti-tamper, Frida/Xposed/Magisk probes, its own
+guard libraries) died on every targeted launch: `SIGSEGV` at address 0 on the `create_react_context`
+thread about two seconds in, no tombstone (the reaction is the SDK's own; under strace one of the
+app's threads ended the process with `kill(getpid(), SIGKILL)` after a double fork). Untargeted it
+ran. It still died with every surface off, with `aot.stat_hook_fallback` off and with `aot.evict_oat`
+off; a build without the two app-private `dlopen` rows ran it with every surface applied
+(`okhttp_pinner applied=3/4`, `bundled_tls` DEX rows `2/2`, `flutter applied=1`, `chromium
+applied=1/2`). The SDK's libraries import `dlopen`, so the old wildcard rows rewrote slots in them,
+and the SDK verifies its own `.got.plt` against `.rela.plt` (the strings are in its guard library).
+
+The edge now lives in `libdl.so`'s two linker slots (C3 above): same app, same config, both slots
+`applied=1`, 27 deferred loads seen including bare-name `dlopen`s from native code
+(`vulkan.adreno.so`), app alive. Test app on the same build: `custom_trustmanager`, `nsc_pins`,
+`okhttp_pinner`, `untrusted_chain`, `static_openssl`, `webview` PASS; `post_handshake_digest` FAIL as
+designed.
+
 ### Packed apps (2026-11-01, same device)
 
-- A DexHelper-packed Flutter app: the packer's loader library imports `dlopen` and is hooked by the
-  app-library `deferred_load` edge; the DEX it unpacks goes through `DexFileVerifier` like any other
+- A DexHelper-packed Flutter app: the packer's loader library imports `dlopen` and its loads were
+  seen by the `deferred_load` edge (then a hook in the importer, since 2026-11-03 the `libdl.so`
+  slots every `dlopen` passes through); the DEX it unpacks goes through `DexFileVerifier` like any other
   and came out with `okhttp_pinner applied=3/4`; `flutter applied=1`. Nothing packer-specific was
   needed. (The app's own "service error" screen is the same with the module off: environmental.)
 - Exit criterion 8 (WebUI): the module's WebUI opens inside APatch's manager (`WebUIActivity`,
@@ -309,8 +331,8 @@ Also pending; procedure in `docs/testing.md`.
 ## Getting reference libraries
 
 `tools/reference-libs/<api>/` is **gitignored**: do not commit Google's binaries. Each directory holds
-`libart.so`, `libartbase.so`, `libdexfile.so`, `libnativeloader.so` and `libjavacrypto.so` for that
-API level; the contracts read all of them. The conscrypt `libssl.so`/`libcrypto.so` are pulled when
+`libart.so`, `libartbase.so`, `libdexfile.so`, `libnativeloader.so`, `libjavacrypto.so` and, from
+the runtime APEX, `libdl.so` for that API level; the contracts read all of them. The conscrypt `libssl.so`/`libcrypto.so` are pulled when
 they are real files in the APEX payload; on builds where they are symlinks into the `sharedlibs`
 APEX (API 34 and later) they are absent, which no contract needs.
 
@@ -359,7 +381,7 @@ rather than failing silently on a user's device. The assertions, in `readelf` te
 ```sh
 readelf -r libjavacrypto.so | grep -E 'SSL_(CTX_)?set_custom_verify'           # C1
 readelf -r libdexfile.so    | grep adler32                                     # C2
-readelf -r libnativeloader.so libart.so | grep android_dlopen_ext              # C3
+readelf -r libdl.so | grep -E '__loader_(dlopen|android_dlopen_ext)'            # C3
 readelf -r libart.so libartbase.so libdexfile.so | grep -E '\b(f?stat(at)?(64)?|open(at)?(64)?|access)\b'  # C4
 ```
 

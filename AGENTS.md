@@ -1180,3 +1180,34 @@ rows from the Kony banking app work (its network-library probes, Topaz Heartbeat
 `getInfo` checks, the Kony exit dispatcher) were removed with the `NOP_CALLS` kind only they used.
 SDK- and framework-level rows that are name-stable across apps stay. Root and tamper hiding moved to
 a separate module the same day.
+
+### The deferred-load edge is libdl.so's own linker slots, not the importers' (2026-11-03)
+
+SUPERSEDES "Libraries opened by Dart FFI were invisible to the re-scan (2026-11-01)" and the
+libnativeloader/libart part of "The deferred-load edge is in `libnativeloader.so`, not `libart.so`".
+
+A React Native app carrying a protection SDK died with `SIGSEGV` at address 0 on its
+`create_react_context` thread two seconds into every targeted launch, and lived untargeted. It died
+with every surface off, with the stat fallback off, and with oat eviction off; the only in-process
+writes left were the deferred-load rows. A build without the two app-private `dlopen` rows ran it
+with every surface applied. The SDK's libraries import `dlopen`, were hooked like any other
+app-private importer, and the SDK verifies its own `.got.plt` against `.rela.plt` (the strings are in
+its guard library); a slot pointing outside `libdl.so` is its tamper signal. The reaction is
+deliberate (a null call; under strace, after a double fork, one of the app's own threads ended the
+process with `kill(getpid(), SIGKILL)`), so there is never a tombstone to read.
+
+The replacement is the question the detection model asks first: the lowest-numbered primitive that
+reaches "every library load". `dlopen` and `android_dlopen_ext` are thin wrappers in `libdl.so`
+that call the linker's `__loader_dlopen` / `__loader_android_dlopen_ext` through libdl's own import
+slots, passing `__builtin_return_address(0)` for namespace resolution. Two `R_AARCH64_JUMP_SLOT`
+rewrites in one system library (primitive #3) see every load in the process — `System.loadLibrary`
+through libnativeloader, Dart FFI through `libflutter.so`, SDK loaders, packers, libc — where the
+old design needed GOT writes in `libnativeloader.so`, `libart.so` and every app-private importer
+(primitive #4, in the libraries most likely to check). The replacement forwards the caller address
+untouched, so the `__loader_*`-with-caller trick from the superseded entry is no longer needed.
+Contract C3 now reads `libdl.so` (the extractor pulls it from the runtime APEX).
+
+Rule that falls out of it: **a GOT write in an app-private library is reserved for surfaces that
+exist only there** (a bundled `libssl` consumer, a static TLS table). Anything process-wide — loading,
+file access, properties — has a system-library slot somewhere on the path; find it. Protection SDKs
+check the GOTs they own, not bionic's.

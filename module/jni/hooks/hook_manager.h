@@ -17,7 +17,7 @@
 namespace ph::hooks {
 
 void install(const ipc::Decision& decision);
-// Called from the android_dlopen_ext GOT hook after a library finished loading.
+// Called from the libdl.so dlopen hooks after a library finished loading.
 void on_library_loaded(const char* path);
 
 Tier current_tier();
@@ -25,15 +25,11 @@ Tier current_tier();
 const char* java_target_blocked(const JavaTarget& target);
 const JavaTarget* first_java_target(SurfaceId surface);
 
-extern void* orig_android_dlopen_ext;
-void* android_dlopen_ext_hook(const char* path, int flags, const void* extinfo);
-// dlopen / android_dlopen_ext as imported by app-private libraries (Dart FFI's DynamicLibrary.open,
-// plugin hosts, SDK loaders): loads that never pass through libnativeloader. The replacements go
-// through the linker's __loader_* entry points with the real caller address, because the library
-// name is resolved in the caller's namespace and ours is nobody's.
-extern void* orig_app_dlopen;
-extern void* orig_app_dlopen_ext;
-void* app_dlopen_hook(const char* path, int flags);
-void* app_dlopen_ext_hook(const char* path, int flags, const void* extinfo);
+// Deferred loads: libdl.so's import slots for the linker's dlopen entry points. The caller
+// address libdl's wrappers pass is forwarded as is, so names resolve in the real caller's namespace.
+extern void* orig_loader_dlopen;
+extern void* orig_loader_android_dlopen_ext;
+void* loader_dlopen_hook(const char* path, int flags, const void* caller_addr);
+void* loader_android_dlopen_ext_hook(const char* path, int flags, const void* extinfo, const void* caller_addr);
 
 }  // namespace ph::hooks

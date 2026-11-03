@@ -32,7 +32,7 @@ status=0
 for api in "${apis[@]}"; do
     dir="$root/$api"
     echo "== API $api ($dir)"
-    for lib in libjavacrypto.so libdexfile.so libnativeloader.so libart.so libartbase.so; do
+    for lib in libjavacrypto.so libdexfile.so libdl.so libart.so libartbase.so; do
         [ -f "$dir/$lib" ] || echo "   missing reference library: $lib"
     done
 
@@ -49,14 +49,12 @@ for api in "${apis[@]}"; do
         echo "   FAIL DEX interception: no JUMP_SLOT for adler32 in libdexfile.so (static zlib?)"; ok=0
         imports_glob_dat "$dir/libdexfile.so" adler32 && echo "        (present as GLOB_DAT only)"
     fi
-    dlopen_in=""
-    for lib in libnativeloader.so libart.so; do
-        imports "$dir/$lib" android_dlopen_ext && dlopen_in="$dlopen_in $lib"
-    done
-    if [ -n "$dlopen_in" ]; then
-        echo "   PASS deferred load: android_dlopen_ext JUMP_SLOT in$dlopen_in"
+    # libdl.so's dlopen/android_dlopen_ext wrappers reach the linker through these two slots; every
+    # load in the process passes through them (see hook_manager.cpp).
+    if imports "$dir/libdl.so" __loader_dlopen && imports "$dir/libdl.so" __loader_android_dlopen_ext; then
+        echo "   PASS deferred load: libdl.so imports __loader_dlopen and __loader_android_dlopen_ext via JUMP_SLOT"
     else
-        echo "   FAIL deferred load: no JUMP_SLOT for android_dlopen_ext in libnativeloader.so or libart.so"; ok=0
+        echo "   FAIL deferred load: libdl.so lacks a JUMP_SLOT for __loader_dlopen or __loader_android_dlopen_ext"; ok=0
     fi
     probe=""
     for lib in libartbase.so libart.so libdexfile.so; do
