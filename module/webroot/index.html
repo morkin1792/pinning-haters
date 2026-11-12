@@ -10,90 +10,114 @@
 <body>
 <header class="top">
   <h1>pinning-haters</h1>
-  <p class="sub">Zygisk TLS pinning bypass. Config: <code>/data/adb/pinning_haters/config.json</code></p>
+  <span id="version" class="ver"></span>
 </header>
 
 <main>
 <section id="nobridge" class="card notice" hidden>
   <h2>No shell bridge</h2>
-  <p>This WebUI needs the KernelSU or APatch manager (<code>ksu.exec</code> is missing). Magisk Manager has no
-  WebUI; edit the config over adb instead, starting from the example config in the repo:</p>
-<pre>adb shell su -c 'mkdir -p /data/adb/pinning_haters'
-adb push examples/config.example.json /data/local/tmp/ph.json
-adb shell su -c 'cp /data/local/tmp/ph.json /data/adb/pinning_haters/config.json; chmod 600 /data/adb/pinning_haters/config.json; rm /data/local/tmp/ph.json'
-adb shell su -c 'cat /data/adb/pinning_haters/config.json'</pre>
-  <p>Then put your package names under <code>"packages"</code>; the companion re-reads the file on every app launch.
-  Note that Magisk's built-in Zygisk does not hide module libraries; prefer a host that does if stealth matters.</p>
+  <p>This page needs the KernelSU or APatch manager. On Magisk, edit
+  <code>/data/adb/pinning_haters/config.json</code> as root; the README shows the format.</p>
 </section>
 
-<section class="card" aria-labelledby="h-tier">
-  <h2 id="h-tier">Global stealth tier: <span id="tier-now">max</span></h2>
-  <label for="tier">Ceiling for every package unless overridden per package below</label>
-  <div class="row">
-    <select id="tier">
+<section class="card">
+  <label for="search" class="sr">Search installed apps by name or package</label>
+  <input id="search" type="search" placeholder="Search apps by name or package" autocapitalize="off" autocomplete="off" spellcheck="false">
+  <div id="results-wrap" hidden>
+    <ul id="results" class="apps"></ul>
+    <label class="check"><input type="checkbox" id="sys"> Include system apps</label>
+  </div>
+
+  <h2 class="cap">Targeted apps</h2>
+  <ul id="targets" class="apps"></ul>
+  <p id="empty" class="hint">None yet. Search above and tap an app; the module does nothing until you add one.</p>
+  <p class="hint foot">Changes apply when the app next starts: Save, then force-stop and reopen it. No reboot needed.</p>
+</section>
+
+<details class="card fold" id="settings">
+  <summary>Settings</summary>
+  <div class="field">
+    <span class="cap">Default stealth tier
+      <button type="button" class="info" data-dialog="tier-info" aria-label="About stealth tiers">i</button></span>
+    <select id="tier" aria-label="Default stealth tier">
       <option value="max">max (default)</option>
       <option value="balanced">balanced</option>
       <option value="compat">compat</option>
     </select>
   </div>
   <div id="tier-confirm" class="confirm" hidden>
-    <span>Change the global tier to <b id="tier-next"></b>? Every package without its own override gets louder hooks.</span>
+    <span>Change the default to <b id="tier-next"></b>? Every app without its own tier gets louder hooks.</span>
     <button type="button" id="tier-ok">Change</button>
     <button type="button" id="tier-cancel" class="ghost">Cancel</button>
   </div>
-  <ul class="tiers">
-    <li data-tier="max"><b>max</b> (default): GOT slots in system libraries, DEX patch at verification time, companion-side oat eviction. Zero modified executable bytes in the app.</li>
-    <li data-tier="balanced"><b>balanced</b>: adds inline .text hooks and pattern scanning. A text CRC of the hooked library detects it.</li>
-    <li data-tier="compat"><b>compat</b>: adds libc hooks and the ArtMethod fallback. Standard Xposed checks catch it.</li>
-  </ul>
-</section>
-
-<section class="card" aria-labelledby="h-pkg">
-  <h2 id="h-pkg">Packages</h2>
-  <ul id="pkg-list" class="list"></ul>
-  <p id="pkg-empty" class="hint">The module does nothing until you add a package.</p>
-  <form id="pkg-add" class="row">
-    <label for="pkg-name" class="sr">Package name</label>
-    <input id="pkg-name" type="text" placeholder="com.example.app" autocapitalize="off" autocomplete="off" spellcheck="false">
-    <button type="submit">Add</button>
-  </form>
-  <details id="picker">
-    <summary>Pick from installed apps</summary>
-    <div class="row">
-      <label for="pick-filter" class="sr">Filter installed apps</label>
-      <input id="pick-filter" type="search" placeholder="Filter">
-      <label class="check"><input type="checkbox" id="pick-all"> Include system apps</label>
-    </div>
-    <ul id="pick-list" class="list"></ul>
-  </details>
-</section>
-
-<details class="card" id="advanced">
-  <summary><h2>Advanced</h2></summary>
+  <h2 class="cap">Advanced</h2>
   <ul id="adv-toggles" class="toggles"></ul>
 </details>
 
-<section class="card" aria-labelledby="h-log">
-  <h2 id="h-log">Logging</h2>
+<details class="card fold" id="logs">
+  <summary>Logs <span id="log-state" class="chip"></span></summary>
   <ul id="log-toggles" class="toggles"></ul>
   <div class="row">
-    <label for="log-file" class="sr">Log file</label>
-    <select id="log-file"></select>
+    <select id="log-file" aria-label="Log file"></select>
     <button type="button" id="log-refresh" class="ghost">Refresh</button>
     <button type="button" id="log-copy" class="ghost">Copy</button>
+    <button type="button" class="info" data-dialog="log-info" aria-label="How to read the coverage lines">i</button>
   </div>
   <label for="log-filter" class="sr">Filter log lines</label>
-  <input id="log-filter" type="search" placeholder="Filter lines, e.g. coverage or reachable=no">
-  <p class="legend">
-    <span class="cov-warn">present=yes reachable=no</span> means raise this package's tier to the shown
-    <span class="cov-warn"><b>required_tier</b></span>.
-    <span class="cov-ok">reachable=yes</span> is hooked.
-    <span class="cov-dim">present=no</span> is normal: the app does not ship that library.
-  </p>
+  <input id="log-filter" type="search" placeholder="Filter lines, e.g. coverage">
   <div id="log-summary" class="summary" aria-live="polite"></div>
   <div id="log-view" class="log" tabindex="0" aria-label="Log lines"></div>
-</section>
+</details>
 </main>
+
+<dialog id="tier-info">
+  <h2>Stealth tiers</h2>
+  <p>A tier is a ceiling on how loud the hooks may be. Raise it for one app only when its log says a
+  surface needs it.</p>
+  <dl>
+    <dt>max</dt>
+    <dd>Pointer rewrites in data pages, DEX patched while ART verifies it, file work outside the
+    process. No executable byte of the app changes.</dd>
+    <dt>balanced</dt>
+    <dd>Adds inline code hooks and pattern scanning. A checksum of the hooked library detects it.</dd>
+    <dt>compat</dt>
+    <dd>Adds libc hooks and the ArtMethod fallback. Standard Xposed checks detect it.</dd>
+  </dl>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+
+<dialog id="redirect-info">
+  <h2>Proxy redirect</h2>
+  <p>Leave it empty for apps that honour the system proxy. Flutter and most native code ignore that
+  setting; for those, enter your proxy as <code>ip:port</code>.</p>
+  <dl>
+    <dt>What it does</dt>
+    <dd>Sends this app's TCP port 443 to the proxy and blocks HTTP/3, from outside the app. Nothing
+    is added to the app.</dd>
+    <dt>What the proxy needs</dt>
+    <dd>The app opens TLS straight to it, with no CONNECT request, so the listener must accept TLS
+    directly and read the host from the TLS server name. In Burp that is "Support invisible
+    proxying" on the listener.</dd>
+    <dt>While it is on</dt>
+    <dd>If the proxy is unreachable the app has no HTTPS. Clear the field, save and reopen the app
+    to turn it off.</dd>
+  </dl>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+
+<dialog id="log-info">
+  <h2>Coverage lines</h2>
+  <dl>
+    <dt class="cov-ok">reachable=yes</dt>
+    <dd>The surface is hooked.</dd>
+    <dt class="cov-warn">present=yes reachable=no</dt>
+    <dd>The app has the surface and the tier blocks it. Set this app's tier to the
+    <b>required_tier</b> shown on the line.</dd>
+    <dt class="cov-dim">present=no</dt>
+    <dd>Normal: the app does not ship that library.</dd>
+  </dl>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
 
 <footer class="bar">
   <span id="status" role="status" aria-live="polite"></span>

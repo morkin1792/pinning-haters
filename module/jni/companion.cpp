@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -244,6 +245,103 @@ void serve_log(int client, int log_fd) {
     }
 }
 
+// Opt-in per package ("redirect": "<ipv4>:<port>"): the app's TCP 443 is sent to an interception
+// proxy by a firewall rule keyed on its uid. This is the quiet way to steer an app that ignores the
+// system proxy (dart:io, most native stacks): nothing changes inside the process, its sockets still
+// report the real peer address, and no proxy or VPN shows up in the settings an app can read. The
+// in-process alternative, a hook on connect(), is what this replaces.
+// UDP 443 goes to a closed local port, so QUIC fails with the errno of a server without HTTP/3 and
+// the app falls back to TCP. IPv6 443 is refused so the app falls back to IPv4.
+// ponytail: IPv6 UDP uses REJECT, which the sender sees as EPERM (the errno Android's own firewall
+// gives); DNAT to [::1]:9 would look like a closed port but needs ip6 nat, absent on 4.14 kernels.
+// ponytail: port 443 only; add a port list to the key if an app's API lives elsewhere.
+constexpr uid_t AID_APP_END = 19999;
+constexpr uid_t AID_USER_OFFSET = 100000;
+pthread_mutex_t g_redirect_lock = PTHREAD_MUTEX_INITIALIZER;
+// What this companion process installed. The rules themselves live in the kernel until reboot.
+std::map<uid_t, std::string> g_redirects;
+
+// Runs a shell script as root and returns what it printed. Reading the answer instead of the exit
+// status keeps this independent of the host's SIGCHLD disposition.
+std::string run_script(const std::string& script) {
+    FILE* p = popen(script.c_str(), "r");
+    if (!p) return "";
+    char out[64] = {};
+    const size_t n = fread(out, 1, sizeof(out) - 1, p);
+    pclose(p);
+    return std::string(out, n);
+}
+
+std::string redirect_install_script(uid_t uid, const std::string& dest) {
+    const std::string ip = dest.substr(0, dest.rfind(':'));
+    char buf[1600];
+    snprintf(buf, sizeof(buf),
+             "v4=ok; v6=ok\n"
+             "/system/bin/iptables-restore -w --noflush 2>/dev/null <<E || v4=failed\n"
+             "*nat\n"
+             ":ph_%1$u - [0:0]\n"
+             "-A ph_%1$u -p tcp --dport 443 ! -d %2$s -j DNAT --to-destination %3$s\n"
+             "-A ph_%1$u -p udp --dport 443 -j DNAT --to-destination 127.0.0.1:9\n"
+             "COMMIT\n"
+             "E\n"
+             "/system/bin/iptables -w -t nat -C OUTPUT -m owner --uid-owner %1$u -j ph_%1$u 2>/dev/null ||"
+             " /system/bin/iptables -w -t nat -I OUTPUT -m owner --uid-owner %1$u -j ph_%1$u 2>/dev/null || v4=failed\n"
+             "/system/bin/ip6tables-restore -w --noflush 2>/dev/null <<E || v6=failed\n"
+             "*filter\n"
+             ":ph_%1$u - [0:0]\n"
+             "-A ph_%1$u -p tcp --dport 443 -j REJECT --reject-with tcp-reset\n"
+             "-A ph_%1$u -p udp --dport 443 -j REJECT --reject-with icmp6-port-unreachable\n"
+             "COMMIT\n"
+             "E\n"
+             "/system/bin/ip6tables -w -C OUTPUT -m owner --uid-owner %1$u -j ph_%1$u 2>/dev/null ||"
+             " /system/bin/ip6tables -w -I OUTPUT -m owner --uid-owner %1$u -j ph_%1$u 2>/dev/null || v6=failed\n"
+             "echo v4=$v4 v6=$v6\n",
+             uid, ip.c_str(), dest.c_str());
+    return buf;
+}
+
+std::string redirect_remove_script(uid_t uid) {
+    char buf[700];
+    snprintf(buf, sizeof(buf),
+             "for t in '/system/bin/iptables -w -t nat' '/system/bin/ip6tables -w'; do\n"
+             "$t -D OUTPUT -m owner --uid-owner %1$u -j ph_%1$u; $t -F ph_%1$u; $t -X ph_%1$u\n"
+             "done 2>/dev/null\n",
+             uid);
+    return buf;
+}
+
+// Brings the rules for `uid` in line with the config (`dest` empty → none) and returns the state
+// for the log. Called for every launch, so the common case, nothing configured and nothing
+// installed, must cost a map lookup and no process.
+std::string sync_redirect(uid_t uid, const std::string& dest) {
+    pthread_mutex_lock(&g_redirect_lock);
+    const auto it = g_redirects.find(uid);
+    std::string state = dest.empty() ? "off" : dest;
+    if (dest.empty()) {
+        if (it != g_redirects.end()) {
+            run_script(redirect_remove_script(uid));
+            g_redirects.erase(it);
+            note("redirect: removed for uid %u", uid);
+        }
+    } else if (uid % AID_USER_OFFSET < AID_APP_START || uid % AID_USER_OFFSET > AID_APP_END) {
+        state = "skipped(not an app uid)";
+    } else if (it == g_redirects.end() || it->second != dest) {
+        const std::string out = run_script(redirect_install_script(uid, dest));
+        if (out.find("v4=ok") == std::string::npos) {
+            state = "failed";
+            note("redirect: installing %s for uid %u failed (%s)", dest.c_str(), uid, out.empty() ? "no answer from sh" : "iptables");
+        } else {
+            g_redirects[uid] = dest;
+            if (out.find("v6=ok") == std::string::npos) {
+                state += "(ipv6 not blocked)";
+                note("redirect: uid %u to %s, but the IPv6 block failed; IPv6 443 bypasses the proxy", uid, dest.c_str());
+            }
+        }
+    }
+    pthread_mutex_unlock(&g_redirect_lock);
+    return state;
+}
+
 }  // namespace
 
 void companion_main(int client) {
@@ -269,6 +367,9 @@ void companion_main(int client) {
              prop("ro.build.version.release").c_str(), prop("ro.build.version.security_patch").c_str());
     if (d.target && cfg.evict_oat) d.evicted = evict_oat(req.package, req.data_dir);
     if (d.target && !installed_in_data(req.package)) d.flags |= FLAG_SYSTEM_APP;
+    // Before the reply: the app must not open its first connection ahead of the rule.
+    const auto rule = cfg.packages.find(req.package);
+    const std::string redirect = sync_redirect(req.uid, rule == cfg.packages.end() ? "" : rule->second.redirect);
 
     const bool ok = write_all(client, &d, sizeof(d));
     if (!ok || !d.target || !(d.flags & FLAG_LOG_ENABLED)) {
@@ -293,9 +394,9 @@ void companion_main(int client) {
     // The Request is a trust boundary: never build a root-owned path from an unvalidated name.
     const int log_fd = open_log_file(safe_package_name(req.package) ? req.package : "unknown");
     if (log_fd >= 0) {
-        char line[400];
-        const int n = snprintf(line, sizeof(line), "[companion] package=%s process=%s uid=%u oat_evicted=%u\n",
-                               req.package, req.process, req.uid, d.evicted);
+        char line[700];
+        const int n = snprintf(line, sizeof(line), "[companion] package=%s process=%s uid=%u oat_evicted=%u redirect=%s\n",
+                               req.package, req.process, req.uid, d.evicted, redirect.c_str());
         write_all(log_fd, line, n);
         serve_log(log_source, log_fd);
         close(log_fd);

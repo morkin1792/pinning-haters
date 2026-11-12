@@ -3,6 +3,27 @@
 All notable changes to pinning-haters are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the module's `module.prop`.
 
+## [Unreleased]
+
+### Added
+
+- `packages.<pkg>.redirect` (`"<ipv4>:<port>"`, off unless set): the root companion sends that
+  package's TCP 443 to a proxy listener with a firewall rule on its uid, for apps that ignore the
+  system proxy (Flutter, most native stacks). UDP 443 and IPv6 443 are blocked for the same uid so
+  the app falls back from HTTP/3 and IPv6. Nothing is added inside the target process. The rules
+  follow the config at each launch and vanish at reboot. WebUI field per package. Verified on
+  Android 11 (APatch + Zygisk Next) only.
+- WebUI app list with names, versions and icons, searchable by name or package. The data comes from
+  `apps.dex`, a helper run as root under `app_process`, so it does not depend on the manager's
+  WebView API. `tools/package.sh` now needs `javac`, an `android.jar` and d8.
+
+### Changed
+
+- WebUI redesigned: the targeted apps are the page; each opens to its tier and proxy redirect.
+  Settings and logs are collapsed, and the tier, redirect and coverage explanations sit behind
+  info buttons. The page states that changes need a force-stop of the app, not a reboot, and that
+  a redirect target must accept TLS directly (Burp: "Support invisible proxying").
+
 ## [0.1.0] - 2026-11-04
 
 First code-complete cut of Phase 1 (the `max` tier) plus the Phase 1.5 and Phase 2 work recorded

@@ -8,6 +8,8 @@
 // see <https://www.gnu.org/licenses/> for details.
 #include "config.h"
 
+#include <arpa/inet.h>
+
 #include <fstream>
 #include <sstream>
 
@@ -49,6 +51,21 @@ bool parse_tier(const std::string& s, Tier* out) {
     return true;
 }
 
+bool parse_redirect(const std::string& s, std::string* out) {
+    const size_t colon = s.rfind(':');
+    if (colon == std::string::npos) return false;
+    in_addr addr;
+    if (inet_pton(AF_INET, s.substr(0, colon).c_str(), &addr) != 1) return false;
+    const std::string port = s.substr(colon + 1);
+    if (port.empty() || port.size() > 5 || port.find_first_not_of("0123456789") != std::string::npos) return false;
+    const int p = atoi(port.c_str());
+    if (p < 1 || p > 65535) return false;
+    char ip[INET_ADDRSTRLEN];
+    if (!inet_ntop(AF_INET, &addr, ip, sizeof(ip))) return false;
+    *out = std::string(ip) + ":" + std::to_string(p);
+    return true;
+}
+
 bool parse(const std::string& text, Config* out) {
     *out = Config{};
     const json root = json::parse(text, nullptr, /*allow_exceptions=*/false, /*ignore_comments=*/true);
@@ -73,6 +90,10 @@ bool parse(const std::string& text, Config* out) {
                         out->error += "'packages." + name + ".stealth' must be max|balanced|compat; ";
                     else
                         r.has_tier = true;
+                }
+                if (const json* p = field(rule, "redirect")) {
+                    if (!p->is_string() || !parse_redirect(p->get<std::string>(), &r.redirect))
+                        out->error += "'packages." + name + ".redirect' must be \"<ipv4>:<port>\"; ";
                 }
                 out->packages[name] = r;
             }

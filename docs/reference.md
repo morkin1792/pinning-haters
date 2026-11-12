@@ -69,10 +69,17 @@ with `android:process` still match on the package name).
 
 ### KernelSU and APatch: WebUI
 
-Open the module in the manager and choose its WebUI. It offers the global tier, the package list with
-a `pm list packages` picker and a per-package tier override, the surface and hostname toggles under
-"advanced", the log switches, and a viewer for the most recent log with coverage lines highlighted
-and a summary on top: which surfaces were reached, and which are present but not reached and why.
+Open the module in the manager and choose its WebUI. Search the installed apps by name or package
+and tap one to target it; each targeted app opens to its tier override and its proxy redirect.
+"Settings" holds the default tier and the surface toggles, "Logs" the log switches and a viewer with
+coverage lines highlighted and a summary on top: which surfaces were reached, and which are present
+but not reached and why. Press Save, then force-stop and reopen the app; nothing in the WebUI needs
+a reboot.
+
+App names, versions and icons come from `apps.dex`, a small helper the WebUI runs as root under
+`app_process` (managers differ in what their WebView offers; APatch 11039 has no package API). It
+caches one icon per app under the module's `webroot/icons/`. If it fails, the list falls back to
+bare package names from `pm list packages`.
 The WebUI runs in the manager's WebView through `ksu.exec` (APatch is API-compatible), which already
 has your root context; there is no additional authentication because none is available.
 
@@ -111,7 +118,8 @@ The complete schema is `examples/config.example.json`:
   "stealth": "max",
   "packages": {
     "com.example.targetapp": {},
-    "com.example.hardened": { "stealth": "balanced" }
+    "com.example.hardened": { "stealth": "balanced" },
+    "com.example.ignoresproxy": { "redirect": "192.168.1.10:8081" }
   },
   "relax_hostname_verification": false,
   "surfaces": {
@@ -137,6 +145,7 @@ The complete schema is `examples/config.example.json`:
 | `stealth` | `"max"` \| `"balanced"` \| `"compat"` | `"max"` | Global tier ceiling. Every target carries a `min_tier`; only targets at or below the ceiling are installed. See [stealth-tiers.md](stealth-tiers.md). |
 | `packages` | object | `{}` | Package name → per-package options. An empty value `{}` means "target with the global settings". Empty object: the module is inert. |
 | `packages.<pkg>.stealth` | tier string | inherits `stealth` | Replaces the global ceiling **for that package only**, in either direction. |
+| `packages.<pkg>.redirect` | `"<ipv4>:<port>"` | unset | Send that package's TCP 443 to a proxy listener with a firewall rule on its uid, for apps that ignore the system proxy. Off unless set. See [Apps that ignore the system proxy](#apps-that-ignore-the-system-proxy). |
 | `relax_hostname_verification` | bool | `false` | Also neutralise hostname verifiers (`okhttp3.internal.tls.OkHostnameVerifier`, an app-bundled Apache `AbstractVerifier`). Not `HttpsURLConnection`'s default verifier, which is bootclasspath. Hostname verification is not pinning; a proxy presenting a certificate for the right host does not need this. |
 | `surfaces.platform_tls` | bool | `true` | The conscrypt `custom_verify` wrap. |
 | `surfaces.java_dex` | bool | `true` | DEX patching at verification time. `okhttp_pinner` and `hostname_verifier` depend on it. |
@@ -206,10 +215,44 @@ For broad interception of apps you have *not* targeted, install your proxy's CA 
 with a dedicated CA-certificate module. That modifies no app process and is quieter than listing
 every package here. pinning-haters does not do this and will not.
 
+## Apps that ignore the system proxy
+
+Flutter (`dart:io`) and most native TLS stacks never read the Android proxy setting, so the bypass
+works and the proxy still sees nothing. For those packages, set `redirect`:
+
+```json
+"packages": { "com.example.app": { "redirect": "192.168.1.10:8081" } }
+```
+
+At the app's next launch the root companion installs firewall rules for that app's uid:
+
+- **TCP 443** goes to the address you gave. The listener must accept TLS directly and take the
+  destination from the TLS server name (Burp: "Support invisible proxying" on the listener), because
+  the app does not send `CONNECT`.
+- **UDP 443** goes to a closed local port, so HTTP/3 fails the way it does against a server without
+  QUIC and the app falls back to TCP.
+- **IPv6 443** is refused, so the app falls back to IPv4. The proxy address is IPv4 only.
+
+Nothing changes inside the app: no hook, no descriptor, and its sockets still report the real server
+address. The rules follow the config at each launch of that package: change the address or remove
+the key, force-stop the app, start it again. A reboot clears every rule. Other ports are untouched.
+
+What to know before turning it on:
+
+- If the proxy is unreachable, the app has no HTTPS at all until the key is removed.
+- A connection to an address that does not exist now succeeds (the proxy answers). An app that
+  probes for exactly that can notice; see [threat-model.md](threat-model.md).
+- On kernels without IPv6 NAT the IPv6 UDP block is a plain reject, which the app sees as `EPERM`,
+  the same error Android's own firewall produces.
+- The per-launch log shows the outcome on its first line: `redirect=<ip:port>`, `redirect=off` or
+  `redirect=failed` (details in `companion.log`).
+
 ## Building
 
 Requirements: Android NDK r26d or later (r27c is what the module has been built with), CMake 3.22+,
-`python3`; Ninja is used when it is on `PATH`. No Android SDK is needed for the module itself.
+`python3`; Ninja is used when it is on `PATH`. The WebUI's app-list helper (`module/apps/Apps.java`)
+needs `javac`, an `android.jar` (`ANDROID_JAR`, or the newest platform under `ANDROID_HOME`) and d8
+(`D8`, `R8_JAR`, or `ANDROID_HOME` build-tools).
 
 The flashable zip in one command:
 
@@ -220,8 +263,8 @@ tools/package.sh v0.1.1                             # or name the version explic
 ```
 
 It configures and builds `module/jni` for arm64-v8a (MinSizeRel, API 30), strips the library, stages
-`module.prop`, `customize.sh`, `service.sh`, `config.default.json`, `META-INF/`, `webroot/` and
-`zygisk/arm64-v8a.so` under `build/pkg/`, writes `build/pinning-haters-<version>.zip` and prints its
+`module.prop`, `customize.sh`, `service.sh`, `config.default.json`, `META-INF/`, `webroot/`,
+`apps.dex` and `zygisk/arm64-v8a.so` under `build/pkg/`, writes `build/pinning-haters-<version>.zip` and prints its
 SHA-256. Flash that zip from the root manager, or push only the library to a test device with
 `PH_DEVICE=<serial> tools/device_test.sh install build/pkg/zygisk/arm64-v8a.so`, which replaces it
 through a new inode and reboots.

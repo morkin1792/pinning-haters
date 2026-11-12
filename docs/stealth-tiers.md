@@ -86,8 +86,9 @@ those entries without any change to the configuration format.
 
 Flutter note for testing: `dart:io` ignores the Android HTTP proxy setting and user-installed CAs.
 To see Flutter traffic in an interception proxy, redirect the app's TCP 443 to an invisible-proxy
-listener (`iptables -t nat -I OUTPUT -p tcp --dport 443 -m owner --uid-owner <uid> -j DNAT
---to-destination <proxy>:<port>`); the module only makes the untrusted certificate acceptable.
+listener with the per-package `redirect` key (`docs/reference.md`). The redirect is a firewall rule
+installed by the root companion, outside the process, so it is available at every tier and changes
+nothing a tier describes.
 
 ## When to escalate
 

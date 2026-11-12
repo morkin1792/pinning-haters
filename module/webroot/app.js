@@ -3,29 +3,31 @@
 // through ksu.exec as root. Keys and accepted values mirror module/jni/config/config.cpp exactly.
 'use strict';
 
+const MOD = '/data/adb/modules/pinning_haters';
 const DIR = '/data/adb/pinning_haters';
 const CONFIG = DIR + '/config.json';
 const LOG_DIR = DIR + '/log';
 const TIERS = ['max', 'balanced', 'compat'];
-// [path, default per config.cpp, description]
+// [path, default per config.cpp, title, description]
+// surfaces.foreign_runtime (Unity IL2CPP, Mono) is left out: no backend exists yet, so the switch did nothing.
 const ADV_TOGGLES = [
-  ['surfaces.platform_tls', true, "Wrap conscrypt's verify callback: platform trust, Network Security Config pins, TrustKit, custom TrustManagers."],
-  ['surfaces.java_dex', true, 'Patch DEX bytecode at verification time: OkHttp CertificatePinner and other post-handshake pinning.'],
-  ['surfaces.bundled_tls', true, 'TLS libraries the app bundles itself: GOT hooks on OpenSSL/BoringSSL consumers (curl, gRPC) and the Flutter libflutter.so pointer swap.'],
-  ['surfaces.foreign_runtime', false, 'Unity IL2CPP and Mono. Nothing installable yet (Phase 2). Flutter pin plugins are Java targets under java_dex.'],
-  ['relax_hostname_verification', false, 'Also disable hostname verification. Not pinning; leave off unless your proxy certificate has the wrong name.'],
-  ['aot.evict_oat', true, "Delete the package's compiled oat artifacts before launch so DEX patches take effect. Slower app start."],
-  ['hide.self_remap', true, "Re-map this module's own pages anonymously after hooking, so the module path is gone from /proc/self/maps. Leaves the host's libzygisk.so alone."],
-  ['aot.stat_hook_fallback', true, 'In-process stat hook in an ART library for when eviction cannot happen (read-only paths, DEX loaded mid-run).'],
+  ['surfaces.platform_tls', true, 'Platform TLS', 'Platform trust, Network Security Config pins, TrustKit, custom TrustManagers.'],
+  ['surfaces.java_dex', true, 'Java pinning', 'OkHttp CertificatePinner and other checks that run after the handshake.'],
+  ['surfaces.bundled_tls', true, 'Bundled TLS libraries', 'OpenSSL or BoringSSL shipped inside the app: curl, gRPC, Flutter.'],
+  ['relax_hostname_verification', false, 'Relax hostname verification', 'Not pinning. Leave off unless your proxy certificate has the wrong name.'],
+  ['aot.evict_oat', true, 'Evict compiled code', "Delete the app's compiled code before launch so DEX patches take effect. Slower app start."],
+  ['aot.stat_hook_fallback', true, 'Compiled-code fallback', 'Hide compiled code in-process where it cannot be deleted.'],
+  ['hide.self_remap', true, 'Hide the module mapping', "Remove the module's path from the app's memory map."],
 ];
 const LOG_TOGGLES = [
-  ['log.enabled', false, 'Write one log per app launch to ' + LOG_DIR + ' (root-only, rotated after 7 days / 100 MB).'],
-  ['log.verbose', false, 'Include debug-level lines.'],
+  ['log.enabled', false, 'Record logs', 'One root-only file per app launch, kept 7 days.'],
+  ['log.verbose', false, 'Verbose', 'Include debug lines.'],
 ];
 
 const $ = (id) => document.getElementById(id);
 let cfg = normalize({});
-let installed = [];
+let apps = new Map();        // package -> { label, version }
+const expanded = new Set();  // targeted apps whose settings are open; survives re-renders
 let logLines = [];
 
 // ---- shell bridge --------------------------------------------------------------------------
@@ -81,7 +83,6 @@ async function loadConfig() {
   try { text = await exec('cat ' + CONFIG); } catch (_) { /* missing file: defaults */ }
   if (text === null) {
     cfg = normalize({});
-    if (window.ksu) toast('No config yet; showing defaults');
   } else {
     try { cfg = normalize(JSON.parse(text)); }
     catch (_) { cfg = normalize({}); toast('config.json is not valid JSON; Save will replace it', true); }
@@ -97,7 +98,9 @@ async function saveConfig() {
   try {
     await exec(`mkdir -p ${DIR} && echo '${b64}' | base64 -d > ${tmp} && chmod 600 ${tmp} && mv ${tmp} ${CONFIG}`);
     $('save').classList.remove('dirty');
-    toast(Object.keys(cfg.packages).length ? 'Saved' : 'Saved (no packages: module is inert)');
+    toast(Object.keys(cfg.packages).length
+      ? 'Saved. Force-stop and reopen the app to apply; no reboot.'
+      : 'Saved. No app targeted: the module is inert.');
   } catch (e) {
     toast('Save failed: ' + e.message, true);
   }
@@ -106,105 +109,205 @@ async function saveConfig() {
 // ---- render --------------------------------------------------------------------------------
 
 function render() {
-  renderTier();
-  renderPackages();
+  $('tier').value = cfg.stealth;
+  renderTargets();
+  renderResults();
   renderToggles($('adv-toggles'), ADV_TOGGLES);
   renderToggles($('log-toggles'), LOG_TOGGLES);
+  renderLogState();
 }
 
-function renderTier() {
-  $('tier-now').textContent = cfg.stealth;
-  $('tier').value = cfg.stealth;
-  for (const li of document.querySelectorAll('.tiers li')) {
-    if (li.dataset.tier === cfg.stealth) li.setAttribute('aria-current', 'true'); else li.removeAttribute('aria-current');
-  }
-  renderPackages();  // "inherit (max)" labels follow the global tier
-}
-
-function renderPackages() {
-  const names = Object.keys(cfg.packages).sort();
-  const ul = $('pkg-list');
-  ul.textContent = '';
-  $('pkg-empty').hidden = names.length > 0;
-  for (const name of names) {
-    const rule = cfg.packages[name];
-    const sel = el('select');
-    sel.setAttribute('aria-label', 'Stealth tier for ' + name);
-    sel.append(new Option('inherit (' + cfg.stealth + ')', ''));
-    for (const t of TIERS) sel.append(new Option(t, t));
-    sel.value = rule.stealth || '';
-    sel.onchange = () => { if (sel.value) rule.stealth = sel.value; else delete rule.stealth; markDirty(); };
-    const rm = el('button', 'ghost', 'Remove');
-    rm.type = 'button';
-    rm.setAttribute('aria-label', 'Remove ' + name);
-    rm.onclick = () => { delete cfg.packages[name]; markDirty(); renderPackages(); renderPicker(); };
-    const li = el('li', 'item');
-    li.append(el('span', 'name mono', name), sel, rm);
-    ul.append(li);
-  }
-}
-
-function addPackage(name) {
-  name = name.trim();
-  if (!name) return;
-  if (!/^[\w$]+(\.[\w$]+)*$/.test(name)) return toast('Not a valid package name: ' + name, true);
-  if (cfg.packages[name]) return toast(name + ' is already listed');
-  cfg.packages[name] = {};
-  markDirty();
-  renderPackages();
-  renderPicker();
-  toast('Added ' + name + '; press Save to apply');
-}
+function renderLogState() { $('log-state').textContent = getPath('log.enabled') === true ? 'on' : 'off'; }
 
 function renderToggles(ul, defs) {
   ul.textContent = '';
-  for (const [path, def, desc] of defs) {
+  for (const [path, def, title, desc] of defs) {
     const cur = getPath(path);
-    const cb = el('input');
+    const cb = el('input', 'switch');
     cb.type = 'checkbox';
     cb.checked = typeof cur === 'boolean' ? cur : def;
-    cb.onchange = () => { setPath(path, cb.checked); markDirty(); };
+    cb.onchange = () => { setPath(path, cb.checked); markDirty(); renderLogState(); };
     const text = el('span');
-    text.append(el('b', '', path), el('small', '', desc));
+    text.append(el('b', '', title), el('small', '', desc));
     const label = el('label', 'toggle');
-    label.append(cb, text);
+    label.append(text, cb);
     const li = el('li');
     li.append(label);
     ul.append(li);
   }
 }
 
-// ---- package picker --------------------------------------------------------------------------
+// ---- apps ------------------------------------------------------------------------------------
 
-async function loadInstalled() {
-  const ul = $('pick-list');
-  ul.textContent = '';
-  ul.append(el('li', 'hint', 'Loading...'));
+// Labels, versions and icons come from a small helper run under app_process as root, because
+// managers differ in what their WebView offers. Without it the list falls back to package names.
+async function loadApps() {
+  const all = $('sys').checked;
   try {
-    const out = await exec('pm list packages' + ($('pick-all').checked ? '' : ' -3'));
-    installed = out.split('\n').map((l) => l.replace(/^package:/, '').trim()).filter(Boolean).sort();
-  } catch (e) {
-    installed = [];
-    toast('pm list packages failed: ' + e.message, true);
+    // cd /: app_process on Android 11 crashes at startup when the shell's directory no longer exists.
+    const out = await exec(`cd / && /system/bin/app_process -Djava.class.path=${MOD}/apps.dex /system/bin ph.Apps ${MOD}/webroot/icons${all ? ' all' : ''}`);
+    apps = new Map(out.split('\n').filter((l) => l.includes('\t')).map((l) => {
+      const [pkg, , version, label] = l.split('\t');
+      return [pkg, { label: label || pkg, version }];
+    }));
+    if (!apps.size) throw new Error('empty app list');
+  } catch (_) {
+    try {
+      const out = await exec('pm list packages' + (all ? '' : ' -3'));
+      apps = new Map(out.split('\n').map((l) => l.replace(/^package:/, '').trim()).filter(Boolean).map((p) => [p, { label: p, version: '' }]));
+    } catch (e) {
+      apps = new Map();
+      toast('Cannot list apps: ' + e.message, true);
+    }
   }
-  renderPicker();
+  renderTargets();
+  renderResults();
 }
 
-function renderPicker() {
-  const q = $('pick-filter').value.trim().toLowerCase();
-  const ul = $('pick-list');
+const labelOf = (pkg) => (apps.has(pkg) ? apps.get(pkg).label : pkg);
+const byLabel = (a, b) => labelOf(a).localeCompare(labelOf(b));
+// Case- and accent-insensitive, so "itau" finds "Itaú".
+const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Icon + name + version + package; the caller appends its own trailing control.
+function appRow(pkg) {
+  const app = apps.get(pkg);
+  const label = labelOf(pkg);
+  const img = el('img', 'icon');
+  img.alt = '';
+  img.loading = 'lazy';
+  img.onerror = () => img.replaceWith(el('span', 'icon letter', (label === pkg ? pkg.split('.').pop() : label).charAt(0).toUpperCase()));
+  img.src = 'icons/' + pkg + '.png';
+  const meta = el('span', 'meta');
+  if (label === pkg) {
+    meta.append(el('span', 'mono', pkg));
+  } else {
+    const title = el('span');
+    title.append(el('b', '', label), el('small', '', app.version));
+    meta.append(title, el('small', 'mono', pkg));
+  }
+  return [img, meta];
+}
+
+function validRedirect(v) {
+  const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/);
+  return !!m && m.slice(1, 5).every((o) => +o <= 255) && +m[5] >= 1 && +m[5] <= 65535;
+}
+
+function field(caption, control, hint) {
+  const f = el('div', 'field');
+  f.append(caption, control);
+  if (hint) f.append(el('p', 'hint', hint));
+  return f;
+}
+
+function infoButton(dialog, label) {
+  const b = el('button', 'info', 'i');
+  b.type = 'button';
+  b.dataset.dialog = dialog;
+  b.setAttribute('aria-label', label);
+  return b;
+}
+
+function renderTargets() {
+  const names = Object.keys(cfg.packages).sort(byLabel);
+  const ul = $('targets');
   ul.textContent = '';
-  const shown = installed.filter((p) => !cfg.packages[p] && p.toLowerCase().includes(q));
-  for (const p of shown.slice(0, 200)) {
-    const b = el('button', 'pick', p);
+  $('empty').hidden = names.length > 0;
+  for (const name of names) {
+    const rule = cfg.packages[name];
+    const chips = el('span', 'chips');
+    const fillChips = () => {
+      chips.textContent = '';
+      if (rule.stealth) chips.append(el('span', 'chip', rule.stealth));
+      if (rule.redirect) chips.append(el('span', 'chip', 'proxy'));
+    };
+    fillChips();
+    const summary = el('summary', 'approw');
+    summary.append(...appRow(name), chips);
+
+    const sel = el('select');
+    sel.setAttribute('aria-label', 'Stealth tier for ' + name);
+    sel.append(new Option('default (' + cfg.stealth + ')', ''));
+    for (const t of TIERS) sel.append(new Option(t, t));
+    sel.value = rule.stealth || '';
+    sel.onchange = () => { if (sel.value) rule.stealth = sel.value; else delete rule.stealth; fillChips(); markDirty(); };
+    const tierCap = el('span', 'cap', 'Stealth tier');
+    tierCap.append(infoButton('tier-info', 'About stealth tiers'));
+
+    // Optional: send this app's TCP 443 to a proxy listener (apps that ignore the system proxy).
+    const rd = el('input');
+    rd.type = 'text';
+    rd.placeholder = '192.168.1.10:8080';
+    rd.autocapitalize = 'off';
+    rd.spellcheck = false;
+    rd.setAttribute('aria-label', 'Redirect TCP 443 of ' + name + ' to a proxy at ip:port');
+    rd.value = rule.redirect || '';
+    rd.onchange = () => {
+      const v = rd.value.trim();
+      if (v && !validRedirect(v)) { rd.value = rule.redirect || ''; return toast('Proxy redirect must be <ipv4>:<port>', true); }
+      if (v) rule.redirect = v; else delete rule.redirect;
+      fillChips();
+      markDirty();
+    };
+
+    const redirectCap = el('span', 'cap', 'Proxy redirect');
+    redirectCap.append(infoButton('redirect-info', 'About the proxy redirect'));
+
+    const rm = el('button', 'danger', 'Remove');
+    rm.type = 'button';
+    rm.setAttribute('aria-label', 'Remove ' + name);
+    rm.onclick = () => { delete cfg.packages[name]; expanded.delete(name); markDirty(); renderTargets(); renderResults(); };
+
+    const body = el('div', 'body');
+    body.append(
+      field(tierCap, sel),
+      field(redirectCap, rd, 'The proxy must accept TLS directly. Burp: enable "Support invisible proxying" on the listener.'),
+      rm);
+    const d = el('details', 'app');
+    d.open = expanded.has(name);
+    d.ontoggle = () => { if (d.open) expanded.add(name); else expanded.delete(name); };
+    d.append(summary, body);
+    const li = el('li');
+    li.append(d);
+    ul.append(li);
+  }
+}
+
+function renderResults() {
+  const raw = $('search').value.trim();
+  const q = fold(raw);
+  const ul = $('results');
+  ul.textContent = '';
+  $('results-wrap').hidden = !q;
+  if (!q) return;
+  const add = (pkg, action) => {
+    const b = el('button', 'approw');
     b.type = 'button';
-    b.onclick = () => addPackage(p);
+    b.disabled = !!cfg.packages[pkg];
+    b.append(...appRow(pkg), el('span', 'act', b.disabled ? 'Added' : action));
+    b.onclick = () => addPackage(pkg);
     const li = el('li');
     li.append(b);
     ul.append(li);
-  }
-  if (shown.length > 200) ul.append(el('li', 'hint', (shown.length - 200) + ' more; narrow the filter'));
-  if (!shown.length && installed.length) ul.append(el('li', 'hint', 'No matches'));
+  };
+  const hits = [...apps.keys()].filter((p) => fold(p).includes(q) || fold(labelOf(p)).includes(q)).sort(byLabel);
+  for (const p of hits.slice(0, 50)) add(p, 'Add');
+  if (hits.length > 50) ul.append(el('li', 'hint', (hits.length - 50) + ' more; keep typing'));
+  // A package that is not in the list (not installed yet, or a system app) can still be added by name.
+  if (!apps.has(raw) && /^[\w$]+(\.[\w$]+)+$/.test(raw)) add(raw, 'Add by name');
+  if (!ul.children.length) ul.append(el('li', 'hint', 'No matches'));
+}
+
+function addPackage(name) {
+  if (cfg.packages[name]) return;
+  cfg.packages[name] = {};
+  expanded.add(name);
+  $('search').value = '';
+  markDirty();
+  renderTargets();
+  renderResults();
+  toast('Added ' + labelOf(name) + '; press Save');
 }
 
 // ---- log viewer ------------------------------------------------------------------------------
@@ -345,18 +448,24 @@ function init() {
     $('tier-confirm').hidden = next === cfg.stealth;
     $('tier-next').textContent = next;
   };
-  $('tier-ok').onclick = () => { cfg.stealth = $('tier').value; $('tier-confirm').hidden = true; markDirty(); renderTier(); };
+  $('tier-ok').onclick = () => { cfg.stealth = $('tier').value; $('tier-confirm').hidden = true; markDirty(); renderTargets(); };
   $('tier-cancel').onclick = () => { $('tier').value = cfg.stealth; $('tier-confirm').hidden = true; };
-  $('pkg-add').onsubmit = (e) => { e.preventDefault(); addPackage($('pkg-name').value); $('pkg-name').value = ''; };
-  $('picker').ontoggle = () => { if ($('picker').open && !installed.length) loadInstalled(); };
-  $('pick-all').onchange = loadInstalled;
-  $('pick-filter').oninput = renderPicker;
+  $('search').oninput = renderResults;
+  $('sys').onchange = loadApps;
+  // (i) buttons, including the ones rendered per app, open the dialog they name.
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-dialog]');
+    if (b) $(b.dataset.dialog).showModal();
+    else if (e.target.tagName === 'DIALOG') e.target.close();  // tap on the backdrop
+  });
+  $('logs').ontoggle = () => { if ($('logs').open) loadLogList(); };
   $('log-file').onchange = loadLog;
   $('log-refresh').onclick = loadLogList;
   $('log-copy').onclick = copyLog;
   $('log-filter').oninput = renderLog;
   $('save').onclick = saveConfig;
-  loadConfig().then(loadLogList);
+  exec(`sed -n 's/^version=//p' ${MOD}/module.prop`).then((v) => { $('version').textContent = v.trim(); }, () => {});
+  loadConfig().then(loadApps);
 }
 
 init();

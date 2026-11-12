@@ -3,7 +3,8 @@
   "stealth": "max",
   "packages": {
     "com.example.targetapp": {},
-    "com.example.hardened": { "stealth": "balanced" }
+    "com.example.hardened": { "stealth": "balanced" },
+    "com.example.ignoresproxy": { "redirect": "192.168.1.10:8081" }
   },
   "relax_hostname_verification": false,
   "surfaces": {

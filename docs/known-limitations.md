@@ -31,7 +31,8 @@ boundaries; the rest are tier or phase boundaries with a planned path.
   no exported `SSL_*`) is reached at `max` through a pointer swap in BoringSSL's
   `ssl_crypto_x509_method` table, located by heuristic. Reported as `flutter`. Two things the module
   cannot change: `dart:io` ignores the Android HTTP proxy setting and user-installed CAs, so Flutter
-  traffic only reaches a proxy through an invisible listener plus traffic redirection; and a Flutter
+  traffic only reaches a proxy through an invisible listener plus traffic redirection (the
+  per-package `redirect` key does the redirection; `docs/reference.md`); and a Flutter
   engine built from a BoringSSL that no longer references the `"ssl_client"`/`"ssl_server"` purpose
   strings makes the locator return nothing (the ladder then says `reason=pattern_not_found`;
   `tests/host/test_boringssl_table` against the engine's `libflutter.so` is the check).
@@ -123,6 +124,10 @@ boundaries; the rest are tier or phase boundaries with a planned path.
 - **Absent oat artifacts are themselves observable.** An app that checks for its own `.odex` will
   notice. See `docs/threat-model.md`.
 - **One extra file descriptor** in the target process while logging is enabled.
+- **`redirect` covers port 443 over IPv4 only.** HTTP/3 and IPv6 are blocked for that app rather than
+  intercepted, other ports are left alone, and the app loses HTTPS while the proxy is unreachable.
+  Verified on Android 11 (APatch + Zygisk Next); KernelSU and Magisk as hosts are untested for this
+  key.
 
 ## Stealth posture
 

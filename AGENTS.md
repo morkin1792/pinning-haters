@@ -1217,3 +1217,47 @@ Rule that falls out of it: **a GOT write in an app-private library is reserved f
 exist only there** (a bundled `libssl` consumer, a static TLS table). Anything process-wide — loading,
 file access, properties — has a system-library slot somewhere on the path; find it. Protection SDKs
 check the GOTs they own, not bionic's.
+
+### Traffic redirect is a companion-side firewall rule, never a `connect` hook (owner decision, 2026-11-11)
+
+Apps that ignore the system proxy (`dart:io`, most native stacks) are bypassed and still invisible
+to the proxy. A third-party Flutter module solves that with an inline hook on the engine's
+address resolver plus an inline hook on libc `socket()` (primitives #5 and #6). The question the
+detection model asks first has a better answer: per-package `redirect` makes the companion install
+`iptables` rules keyed on the app's uid (primitive #2). Nothing is added to the process, the app's
+sockets report the address it dialled, and no proxy or VPN appears in any setting an app can read.
+The owner approved this as network functionality on 2026-11-11, on the condition that it is opt-in
+per package and costs no in-process stealth. It is tier-independent for that reason.
+
+What the spike on the Redmi K20 settled, and the rules that follow:
+
+- **One chain per uid, in `nat` (IPv4) and `filter` (IPv6), entered by an owner-match jump from
+  `OUTPUT`.** The chain is refilled atomically with `iptables-restore --noflush`; the jump is added
+  only if `-C` says it is missing. netd leaves foreign rules in `OUTPUT` alone across a Wi-Fi cycle.
+- **HTTP/3 is blocked by DNAT to a closed local port, not by `REJECT`.** `REJECT` in `OUTPUT` makes
+  `sendto` fail with `EPERM`; DNAT to `127.0.0.1:9` gives `ECONNREFUSED`, the errno of a server
+  without QUIC. IPv6 has no NAT table on 4.14 kernels, so IPv6 TCP 443 gets a `tcp-reset` reject
+  (also `ECONNREFUSED`) and IPv6 UDP 443 a plain reject (`EPERM`); the app falls back to IPv4.
+- **The untouched default costs nothing.** `sync_redirect` runs on every launch of every app, so
+  with no key set and nothing installed it is a map lookup: no `iptables` process, no firewall
+  state. Do not add a "clean up just in case" exec to that path.
+- **State is in memory and in the kernel only.** The companion remembers which uids it installed;
+  the rules die with a reboot. A rule can outlive its key only if the companion restarts between the
+  two, and then until reboot. That is accepted; a state file would be one more thing under
+  `/data/adb` to keep consistent.
+- **The value is an IPv4 literal and a port, validated in the parser.** It is written into a shell
+  script run as root; nothing else may ever reach that string.
+- Not verified: KernelSU and Magisk as hosts (the companion's SELinux domain must be allowed to run
+  `iptables`), a network with global IPv6. On failure the launch log says `redirect=failed` and the
+  app runs unredirected.
+
+### The WebUI's app list comes from our own `app_process` helper, not the manager (2026-11-12)
+
+The owner asked for app names, icons and versions in the WebUI. Newer KernelSU managers expose a
+package API and an icon URL scheme to the WebView; APatch 11039, the manager on the Android 11 test
+device, exposes neither (its APK has no such interface), and no shell command resolves an app label.
+So `module/apps/Apps.java` is built to `apps.dex` and run as root with `app_process` from
+`ksu.exec`: one code path on every manager, tested on the device we have. It prints one line per
+package and caches a PNG per app in `webroot/icons/`, the only place the WebView can load from. It
+runs in the manager's root shell, never in a target process, so it costs nothing on the detection
+model. If it fails the WebUI falls back to bare package names; do not make it a hard dependency.

@@ -293,6 +293,35 @@ check for the next run.
 A related exit criterion (plan §1.16 item 7): the bypass survives an overnight `bg-dexopt` cycle.
 Also pending; procedure in `docs/testing.md`.
 
+### The `redirect` key (2026-11-11, Redmi K20, API 30, APatch + Zygisk Next 1.4.5)
+
+The demo package with `"redirect": "104.154.89.105:443"` (untrusted-root.badssl.com) and the system
+proxy cleared, targeted at `max`. Kernel 4.14, no IPv6 NAT table.
+
+| case | result |
+|---|---|
+| rules after launch | installed by the companion (`u:r:magisk:s0`): a `nat` chain for the uid with TCP 443 → the address and UDP 443 → `127.0.0.1:9`, an `ip6tables` filter chain rejecting 443; first log line `redirect=104.154.89.105:443` |
+| Flutter button | **green**; one hit on the TCP rule, one `verdict overridden` line |
+| socket view of a redirected connection | `ss` shows the address the client dialled, not the redirect target (checked on a shell-uid connection with hand-installed rules of the same shape; a dialled address that does not exist connects too) |
+| HTTP/3 button | **red** with the key (one 1278-byte hit on the UDP rule), **green** without it |
+| key removed, app relaunched | both chains and both jumps gone, `redirect: removed for uid` in `companion.log`, first log line `redirect=off` |
+| rules across a Wi-Fi off/on cycle | unchanged (checked with hand-installed rules of the same shape) |
+| errno seen by the sender | UDP 443 over IPv4: `ECONNREFUSED`, same as a closed port; TCP 443 over IPv6: `ECONNREFUSED`; UDP 443 over IPv6: `EPERM` |
+
+Not covered: KernelSU and Magisk as hosts, a network with global IPv6, a kernel with IPv6 NAT.
+
+2026-11-12, same device, redirect pointed at a Burp listener **without** "Support invisible
+proxying": the TCP rule is hit once, the connection stays established, the Flutter button never
+resolves and the log has no `verdict overridden` line; a plain non-proxy-style request to the same
+listener gets Burp's own page. A Burp listener with invisible proxying on was not tested.
+
+### The WebUI app list (2026-11-12, Redmi K20, API 30, APatch 11039)
+
+`apps.dex` under `app_process` as root, from the manager's `ksu.exec`: 77 user apps with labels,
+versions and icons in about 2 s on the first run and 0.4 s with the icons cached; 324 packages with
+"Include system apps". Names, versions and icons render in the APatch WebView; search, the per-app
+panel and the info dialogs work there. Not covered: KernelSU's manager, any other Android version.
+
 ### A protection SDK versus the deferred-load edge (2026-11-03, Mi 9T, API 36)
 
 A React Native app that ships a protection SDK (anti-tamper, Frida/Xposed/Magisk probes, its own

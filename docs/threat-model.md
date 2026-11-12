@@ -48,6 +48,7 @@ look.
 | Our `.so` mapped in the process | Walk `/proc/self/maps` for the path, or look for anonymous executable regions. | The path is gone: the module re-maps its own pages anonymously after hooking (`hide.self_remap`). Four anonymous regions (one executable) remain, and a `dl_iterate_phdr` walk still names us on hosts that load modules through bionic (not Zygisk Next, which uses its own linker). |
 | The `TrustManager` threw, but the connection succeeded anyway | A `TrustManager` that records its own rejection and later checks that the socket was torn down would notice the contradiction. | Consequence of wrapping rather than replacing. Replacing would remove this signal and add a louder one ("my `TrustManager` was never called"). |
 | Module library path in `/proc/self/maps` (host-dependent) | Walk maps for paths under `/data/adb/modules`. On the Redmi K20 with Zygisk Next 1.4.5 a generic detector app reported `Found Injection` only while the module targeted it; untargeted, the same device showed every other environment finding (Magisk, LSPosed, mounts) but not that one. | Hiding the host's own library is the host's job (see the host tier table); Zygisk Next 1.4.5 did not hide it here. Phase 2 may add self-remapping. |
+| Redirected traffic (only for a package with `redirect` set) | Nothing in-process: no hook, and `getpeername` returns the real server. Behavioural probes work: a TCP connection to an address that cannot exist succeeds, HTTP/3 never connects, IPv6 443 is refused, and the peer's certificate is the proxy's. | Primitive 2 (root-side, outside the process). Off by default. Quieter than the system proxy setting or a VPN, both of which an app reads through ordinary APIs. |
 | Hooked `__loader_dlopen` / `__loader_android_dlopen_ext` (two `libdl.so` slots) returning normally | Nothing in-process; the slot rewrite above is the only trace. A protection SDK that verifies its *own* `.got.plt` finds nothing: no app-private slot is written for this edge. | |
 
 What is **not** exposed at `max`: no modified executable bytes in any library, so text-segment
@@ -70,7 +71,9 @@ hooking framework) find nothing; no additional threads; no RWX pages; no new map
 - **Processes not in `packages`**, including `system_server`: never touched. There is no denylist
   mode because it would mean hooks in every process.
 - **Network**: the module never makes a request. `update.json` is fetched only by the host module
-  manager when it checks for updates, and only to display a notice.
+  manager when it checks for updates, and only to display a notice. The optional `redirect` key
+  changes where a targeted app's own port-443 traffic goes (to the address the user wrote) and
+  nothing else.
 
 ## Privacy posture
 

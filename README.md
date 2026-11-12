@@ -58,6 +58,10 @@ The module is **inert until you add a package**. It never touches `system_server
 Then force-stop the app and start it again. No reboot: the companion re-reads the config at every
 launch. No proxy CA is needed for targeted packages.
 
+An app that ignores the system proxy (Flutter, most native stacks) can be steered per package with
+`"redirect": "<proxy ip>:<port>"`; see
+[docs/reference.md](docs/reference.md#apps-that-ignore-the-system-proxy).
+
 ## Check that it worked
 
 ```sh

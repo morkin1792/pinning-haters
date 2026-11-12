@@ -115,7 +115,8 @@ hosts. Update this table in the release PR.
 4. Add three real F-Droid apps that ship pinning. Confirm the proxy sees their traffic in clear.
 5. Add a Flutter sample app. Confirm the `flutter` line says `reachable=yes applied=1` at `max`,
    and that its traffic passes through an untrusted interception (Flutter ignores the system proxy:
-   `tools/device_test.sh dnat` or a VPN-based transparent proxy).
+   set the package's `redirect` key, or use `tools/device_test.sh dnat` or a VPN-based transparent
+   proxy).
 6. **`bg-dexopt` survival** (plan §1.16 item 7): with the test app targeted, regenerate its oat
    artifacts the way the nightly job does (`pm compile -m speed-profile -f <pkg>` for one package,
    or `cmd package bg-dexopt-job` for all of them), confirm `oat/arm64/base.{odex,vdex}` exist,

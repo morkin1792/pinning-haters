@@ -29,6 +29,8 @@ int main(int argc, char** argv) {
     CHECK(cfg.packages.count("com.example.targetapp") == 1);
     CHECK(!cfg.packages["com.example.targetapp"].has_tier);
     CHECK(cfg.packages["com.example.hardened"].has_tier && cfg.packages["com.example.hardened"].tier == Tier::BALANCED);
+    CHECK(cfg.packages["com.example.ignoresproxy"].redirect == "192.168.1.10:8081");
+    CHECK(cfg.packages["com.example.targetapp"].redirect.empty());
     CHECK(!cfg.relax_hostname_verification);
     CHECK(cfg.surfaces == (SURFACE_PLATFORM_TLS | SURFACE_JAVA_DEX | SURFACE_BUNDLED_TLS));
     CHECK(cfg.evict_oat && cfg.stat_hook_fallback);
@@ -69,6 +71,15 @@ int main(int argc, char** argv) {
     CHECK(d.surfaces == (SURFACE_PLATFORM_TLS | SURFACE_JAVA_DEX | SURFACE_FOREIGN_RUNTIME));
     config::decide(cfg, "y", &d);
     CHECK(d.target && d.tier == Tier::COMPAT);
+    // redirect ends up in firewall rules: an IPv4 literal and a port, or nothing.
+    std::string r;
+    CHECK(config::parse_redirect("10.0.0.2:8080", &r) && r == "10.0.0.2:8080");
+    for (const char* bad : {"", "10.0.0.2", "10.0.0.2:", "10.0.0.2:0", "10.0.0.2:65536", "10.0.0.2:80 -j ACCEPT",
+                            "proxy.lan:8080", "10.0.0.2;reboot:80", "[::1]:8080", "10.0.0.256:80", "10.0.0.2:-1"})
+        CHECK(!config::parse_redirect(bad, &r));
+    CHECK(!config::parse(R"({"packages":{"a.b":{"redirect":"proxy.lan:8080"}}})", &cfg));
+    CHECK(cfg.packages.count("a.b") == 1 && cfg.packages["a.b"].redirect.empty());
+    CHECK(strstr(cfg.error.c_str(), "redirect"));
     // Comments are tolerated (people annotate their config).
     CHECK(config::parse("{\n // targets\n \"packages\": {\"z\": {}}\n}", &cfg));
     CHECK(cfg.packages.count("z") == 1);

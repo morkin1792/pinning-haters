@@ -23,6 +23,7 @@ constexpr const char* LOG_DIR = "/data/adb/pinning_haters/log";
 struct PackageRule {
     bool has_tier = false;
     Tier tier = Tier::MAX;
+    std::string redirect;  // "a.b.c.d:port", validated and normalised; empty → the app's traffic is left alone
 };
 
 struct Config {
@@ -39,6 +40,8 @@ struct Config {
 };
 
 bool parse_tier(const std::string& s, Tier* out);
+// IPv4 literal and port only. The result is written into firewall rules, so nothing else passes.
+bool parse_redirect(const std::string& s, std::string* out);
 // Tolerant: unknown keys ignored, wrong types fall back to defaults and are noted in `error`.
 bool parse(const std::string& json_text, Config* out);
 bool load(const char* path, Config* out);
