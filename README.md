@@ -4,13 +4,12 @@ See what an Android app sends over HTTPS, even when it pins its certificates.
 Install the module, pick the app, point it at your proxy.
 
 <p align="center">
-  <img src="docs/img/webui.png" alt="The module's settings page with one app targeted and a proxy address set" width="30%">
+  <img src="docs/img/webui.png" alt="The module's settings page with one app targeted and a proxy address set" width="29%">
   &nbsp;&nbsp;
-  <img src="docs/img/pinning.png" width="62%">
+  <img src="docs/img/pinning.png" width="69%">
 </p>
 
-pinning-haters is a Zygisk module for the apps you are authorised to test. It turns off certificate
-pinning in the apps you choose and leaves every other app alone.
+pinning-haters is a Zygisk module that turns off certificate pinning in the apps you choose.
 
 ## Why this one
 
