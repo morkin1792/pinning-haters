@@ -29,7 +29,7 @@ default (`docs/stealth-tiers.md`).
 | 7 | ArtMethod entry-point flip (LSPlant / Xposed style) | an entry point outside the legitimate `.oat` mapping | common; this is the standard Xposed check |
 
 `max`, the default tier, uses 1, 2 and 3, plus 4 only for app-bundled TLS where there is no other
-way to reach the surface. `balanced` adds 5. `compat` adds 6 and 7. The version shipping as v0.1.0
+way to reach the surface. `balanced` adds 5. `compat` adds 6 and 7. The version shipping as v0.2.0
 implements `max` only.
 
 ## What a target process contains at `max`

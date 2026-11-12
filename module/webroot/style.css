@@ -1,14 +1,14 @@
-/* pinning-haters WebUI. Dark by default, light via prefers-color-scheme. No external assets. */
+/* pinning-haters WebUI. Dark unless <html data-theme="light">; index.html sets that attribute from
+   the saved choice, else from the system setting. No external assets. */
 :root {
-  color-scheme: dark light;
+  color-scheme: dark;
   --bg: #0d0e11; --card: #16181d; --field: #1f2229; --fg: #e8eaf0; --muted: #8b91a1; --line: #262a33;
   --accent: #8ab4f8; --on-accent: #0b1220; --ok: #6bd08b; --warn: #f0b35a; --err: #f28b82; --dim: #5d6373;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f2f3f6; --card: #fff; --field: #eef0f4; --fg: #1b1e25; --muted: #5d6475; --line: #e3e6ec;
-    --accent: #2b62d9; --on-accent: #fff; --ok: #1f8a4c; --warn: #9a5b00; --err: #c0392b; --dim: #9aa1b3;
-  }
+:root[data-theme=light] {
+  color-scheme: light;
+  --bg: #f2f3f6; --card: #fff; --field: #eef0f4; --fg: #1b1e25; --muted: #5d6475; --line: #e3e6ec;
+  --accent: #2b62d9; --on-accent: #fff; --ok: #1f8a4c; --warn: #9a5b00; --err: #c0392b; --dim: #9aa1b3;
 }
 
 * { box-sizing: border-box; }
@@ -22,6 +22,11 @@ main, .top { max-width: 640px; margin: 0 auto; }
 .top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
 h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
 .ver { color: var(--muted); font-size: 13px; }
+#theme { margin-left: auto; align-self: center; min-height: 0; width: 36px; height: 36px; padding: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+#theme::before {  /* half-filled disc, drawn so it does not depend on the device's fonts */
+  content: ""; display: block; width: 16px; height: 16px; margin: auto; border-radius: 50%;
+  border: 2px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
 h2 { font-size: 17px; margin: 0 0 10px; }
 p { margin: 8px 0; }
 ul { list-style: none; margin: 0; padding: 0; }

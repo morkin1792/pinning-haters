@@ -7,7 +7,7 @@ per-package override.
 
 ## Definitions
 
-| Tier | Primitives permitted (numbers from `docs/detection-model.md`) | Status in v0.1.0 |
+| Tier | Primitives permitted (numbers from `docs/detection-model.md`) | Status in v0.2.0 |
 |---|---|---|
 | `max` (default) | 1 DEX patch, 2 companion-side file operations, 3 GOT in system libraries, 4 GOT-class pointer writes in app-private libraries only for bundled TLS (import slots, and the BoringSSL method table of `libflutter.so` or any other statically linked BoringSSL) | implemented |
 | `balanced` | `max` + 5 inline `.text` hooks in system and app libraries | no backend yet; no table entry needs one today (Flutter turned out to be reachable without it) |
@@ -85,7 +85,7 @@ Nothing louder is installed. When the inline backend ships, raising the tier wil
 those entries without any change to the configuration format.
 
 Flutter note for testing: `dart:io` ignores the Android HTTP proxy setting and user-installed CAs.
-To see Flutter traffic in an interception proxy, redirect the app's TCP 443 to an invisible-proxy
+To see Flutter traffic in an interception proxy, redirect the app's TCP 80 and 443 to an invisible-proxy
 listener with the per-package `redirect` key (`docs/reference.md`). The redirect is a firewall rule
 installed by the root companion, outside the process, so it is available at every tier and changes
 nothing a tier describes.

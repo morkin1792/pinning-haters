@@ -245,16 +245,16 @@ void serve_log(int client, int log_fd) {
     }
 }
 
-// Opt-in per package ("redirect": "<ipv4>:<port>"): the app's TCP 443 is sent to an interception
+// Opt-in per package ("redirect": "<ipv4>:<port>"): the app's TCP 80 and 443 are sent to an interception
 // proxy by a firewall rule keyed on its uid. This is the quiet way to steer an app that ignores the
 // system proxy (dart:io, most native stacks): nothing changes inside the process, its sockets still
 // report the real peer address, and no proxy or VPN shows up in the settings an app can read. The
 // in-process alternative, a hook on connect(), is what this replaces.
 // UDP 443 goes to a closed local port, so QUIC fails with the errno of a server without HTTP/3 and
-// the app falls back to TCP. IPv6 443 is refused so the app falls back to IPv4.
+// the app falls back to TCP. IPv6 80 and 443 are refused so the app falls back to IPv4.
 // ponytail: IPv6 UDP uses REJECT, which the sender sees as EPERM (the errno Android's own firewall
 // gives); DNAT to [::1]:9 would look like a closed port but needs ip6 nat, absent on 4.14 kernels.
-// ponytail: port 443 only; add a port list to the key if an app's API lives elsewhere.
+// ponytail: ports 80 and 443 only; add a port list to the key if an app's API lives elsewhere.
 constexpr uid_t AID_APP_END = 19999;
 constexpr uid_t AID_USER_OFFSET = 100000;
 pthread_mutex_t g_redirect_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -274,13 +274,14 @@ std::string run_script(const std::string& script) {
 
 std::string redirect_install_script(uid_t uid, const std::string& dest) {
     const std::string ip = dest.substr(0, dest.rfind(':'));
-    char buf[1600];
+    char buf[2000];
     snprintf(buf, sizeof(buf),
              "v4=ok; v6=ok\n"
              "/system/bin/iptables-restore -w --noflush 2>/dev/null <<E || v4=failed\n"
              "*nat\n"
              ":ph_%1$u - [0:0]\n"
              "-A ph_%1$u -p tcp --dport 443 ! -d %2$s -j DNAT --to-destination %3$s\n"
+             "-A ph_%1$u -p tcp --dport 80 ! -d %2$s -j DNAT --to-destination %3$s\n"
              "-A ph_%1$u -p udp --dport 443 -j DNAT --to-destination 127.0.0.1:9\n"
              "COMMIT\n"
              "E\n"
@@ -290,6 +291,7 @@ std::string redirect_install_script(uid_t uid, const std::string& dest) {
              "*filter\n"
              ":ph_%1$u - [0:0]\n"
              "-A ph_%1$u -p tcp --dport 443 -j REJECT --reject-with tcp-reset\n"
+             "-A ph_%1$u -p tcp --dport 80 -j REJECT --reject-with tcp-reset\n"
              "-A ph_%1$u -p udp --dport 443 -j REJECT --reject-with icmp6-port-unreachable\n"
              "COMMIT\n"
              "E\n"
@@ -334,7 +336,7 @@ std::string sync_redirect(uid_t uid, const std::string& dest) {
             g_redirects[uid] = dest;
             if (out.find("v6=ok") == std::string::npos) {
                 state += "(ipv6 not blocked)";
-                note("redirect: uid %u to %s, but the IPv6 block failed; IPv6 443 bypasses the proxy", uid, dest.c_str());
+                note("redirect: uid %u to %s, but the IPv6 block failed; IPv6 traffic bypasses the proxy", uid, dest.c_str());
             }
         }
     }

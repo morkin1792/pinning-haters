@@ -1261,3 +1261,10 @@ So `module/apps/Apps.java` is built to `apps.dex` and run as root with `app_proc
 package and caches a PNG per app in `webroot/icons/`, the only place the WebView can load from. It
 runs in the manager's root shell, never in a target process, so it costs nothing on the detection
 model. If it fails the WebUI falls back to bare package names; do not make it a hard dependency.
+
+### The redirect also covers TCP 80 (owner request, 2026-11-12)
+
+Port 80 was added to the per-package `redirect`, with the same rule shape as 443
+(IPv4 DNAT to the listener, IPv6 `tcp-reset`), so plain HTTP reaches the proxy once the device-wide
+proxy setting is no longer used. Still a fixed port list; see the `ponytail:` note in
+`companion.cpp` before adding a port key.

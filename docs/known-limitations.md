@@ -13,7 +13,7 @@ boundaries; the rest are tier or phase boundaries with a planned path.
   boundary for the `balanced` tier's future CRC countermeasures, not a gap that will be quietly
   closed; it would need a separate kernel-module component.
 
-## Out of reach in v0.1.0 (tier or phase boundary)
+## Out of reach in v0.2.0 (tier or phase boundary)
 
 - **Dart-side pinning packages** (`http_certificate_pinning`, `ssl_pinning_plugin`, Dio
   interceptors) do their digest comparison in AOT-compiled Dart inside `libapp.so` and abort before
@@ -64,7 +64,7 @@ boundaries; the rest are tier or phase boundaries with a planned path.
   are a separate matter. `balanced` for the TLS stack, `compat` for the pin APIs. Reported as
   `cronet`. Whether Cronet's default system-trust path passes through the conscrypt edge has not been
   verified on a device; the module does not count on it.
-- **The `balanced` and `compat` tiers themselves.** No inline or pattern backend ships in v0.1.0.
+- **The `balanced` and `compat` tiers themselves.** No inline or pattern backend ships in v0.2.0.
   Raising the tier changes the coverage lines, not what is installed (`docs/stealth-tiers.md`).
 - **libcurl `CURLOPT_PINNEDPUBLICKEY`.** curl compares the public key hash itself, inside libcurl,
   after the TLS backend has returned. The bundled-TLS hooks in `libcurl.so`'s GOT disable chain
@@ -124,8 +124,9 @@ boundaries; the rest are tier or phase boundaries with a planned path.
 - **Absent oat artifacts are themselves observable.** An app that checks for its own `.odex` will
   notice. See `docs/threat-model.md`.
 - **One extra file descriptor** in the target process while logging is enabled.
-- **`redirect` covers port 443 over IPv4 only.** HTTP/3 and IPv6 are blocked for that app rather than
-  intercepted, other ports are left alone, and the app loses HTTPS while the proxy is unreachable.
+- **`redirect` covers ports 80 and 443 over IPv4 only.** HTTP/3 and IPv6 are blocked for that app
+  rather than intercepted, other ports are left alone, and the app loses HTTP and HTTPS while the
+  proxy is unreachable.
   Verified on Android 11 (APatch + Zygisk Next); KernelSU and Magisk as hosts are untested for this
   key.
 

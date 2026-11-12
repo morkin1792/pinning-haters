@@ -6,11 +6,20 @@
 <meta name="color-scheme" content="dark light">
 <title>pinning-haters</title>
 <link rel="stylesheet" href="style.css">
+<script>
+// Before first paint: the saved choice, else the system setting. The manager's own theme switch
+// does not reach the page, which is why the header has a button.
+try {
+  document.documentElement.dataset.theme = localStorage.getItem('ph-theme')
+    || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+} catch (_) { /* no storage: stay dark */ }
+</script>
 </head>
 <body>
 <header class="top">
   <h1>pinning-haters</h1>
   <span id="version" class="ver"></span>
+  <button type="button" id="theme" aria-label="Switch between dark and light"></button>
 </header>
 
 <main>
@@ -92,14 +101,14 @@
   setting; for those, enter your proxy as <code>ip:port</code>.</p>
   <dl>
     <dt>What it does</dt>
-    <dd>Sends this app's TCP port 443 to the proxy and blocks HTTP/3, from outside the app. Nothing
-    is added to the app.</dd>
+    <dd>Sends this app's TCP ports 80 and 443 to the proxy and blocks HTTP/3, from outside the app.
+    Nothing is added to the app.</dd>
     <dt>What the proxy needs</dt>
-    <dd>The app opens TLS straight to it, with no CONNECT request, so the listener must accept TLS
-    directly and read the host from the TLS server name. In Burp that is "Support invisible
-    proxying" on the listener.</dd>
+    <dd>The app talks straight to it, with no proxy-style request, so the listener must accept
+    direct HTTP and TLS and take the host from the Host header or the TLS server name. In Burp that
+    is "Support invisible proxying" on the listener.</dd>
     <dt>While it is on</dt>
-    <dd>If the proxy is unreachable the app has no HTTPS. Clear the field, save and reopen the app
+    <dd>If the proxy is unreachable the app has no HTTP or HTTPS. Clear the field, save and reopen the app
     to turn it off.</dd>
   </dl>
   <form method="dialog"><button>Close</button></form>

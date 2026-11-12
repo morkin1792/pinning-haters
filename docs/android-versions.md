@@ -315,6 +315,11 @@ proxying": the TCP rule is hit once, the connection stays established, the Flutt
 resolves and the log has no `verdict overridden` line; a plain non-proxy-style request to the same
 listener gets Burp's own page. A Burp listener with invisible proxying on was not tested.
 
+2026-11-12, port 80 added to the redirect: with rules of the same shape installed by hand for the
+shell uid, a plain HTTP request to a public host on port 80 was answered by the proxy listener and
+hit the port-80 rule once; the IPv6 chain loaded with its port-80 reject. The rule as installed by
+the companion at an app launch has not been exercised yet.
+
 ### The WebUI app list (2026-11-12, Redmi K20, API 30, APatch 11039)
 
 `apps.dex` under `app_process` as root, from the manager's `ksu.exec`: 77 user apps with labels,

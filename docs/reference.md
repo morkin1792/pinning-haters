@@ -145,12 +145,12 @@ The complete schema is `examples/config.example.json`:
 | `stealth` | `"max"` \| `"balanced"` \| `"compat"` | `"max"` | Global tier ceiling. Every target carries a `min_tier`; only targets at or below the ceiling are installed. See [stealth-tiers.md](stealth-tiers.md). |
 | `packages` | object | `{}` | Package name → per-package options. An empty value `{}` means "target with the global settings". Empty object: the module is inert. |
 | `packages.<pkg>.stealth` | tier string | inherits `stealth` | Replaces the global ceiling **for that package only**, in either direction. |
-| `packages.<pkg>.redirect` | `"<ipv4>:<port>"` | unset | Send that package's TCP 443 to a proxy listener with a firewall rule on its uid, for apps that ignore the system proxy. Off unless set. See [Apps that ignore the system proxy](#apps-that-ignore-the-system-proxy). |
+| `packages.<pkg>.redirect` | `"<ipv4>:<port>"` | unset | Send that package's TCP 80 and 443 to a proxy listener with a firewall rule on its uid, for apps that ignore the system proxy. Off unless set. See [Apps that ignore the system proxy](#apps-that-ignore-the-system-proxy). |
 | `relax_hostname_verification` | bool | `false` | Also neutralise hostname verifiers (`okhttp3.internal.tls.OkHostnameVerifier`, an app-bundled Apache `AbstractVerifier`). Not `HttpsURLConnection`'s default verifier, which is bootclasspath. Hostname verification is not pinning; a proxy presenting a certificate for the right host does not need this. |
 | `surfaces.platform_tls` | bool | `true` | The conscrypt `custom_verify` wrap. |
 | `surfaces.java_dex` | bool | `true` | DEX patching at verification time. `okhttp_pinner` and `hostname_verifier` depend on it. |
 | `surfaces.bundled_tls` | bool | `true` | GOT hooks for app-shipped `libssl`/`libcrypto` consumers, and the Flutter `libflutter.so` pointer swap. |
-| `surfaces.foreign_runtime` | bool | `false` | IL2CPP and Mono targets. Nothing is installable here in v0.1.0; those targets have no backend yet (Phase 2). Flutter pin plugins are Java and live under `java_dex`. |
+| `surfaces.foreign_runtime` | bool | `false` | IL2CPP and Mono targets. Nothing is installable here in v0.2.0; those targets have no backend yet (Phase 2). Flutter pin plugins are Java and live under `java_dex`. |
 | `aot.evict_oat` | bool | `true` | The companion deletes the package's oat artifacts before replying. Required for the DEX path to work across `bg-dexopt`; see [known-limitations.md](known-limitations.md) for the startup cost. |
 | `aot.stat_hook_fallback` | bool | `true` | In-process GOT hooks on the `stat`/`open`/`access` imports of ART's libraries return `ENOENT` for oat artifacts under `/data`. Covers read-only paths, unusual layouts and DEX opened mid-run. |
 | `hide.self_remap` | bool | `true` | After hooking, re-map this module's own pages into anonymous memory so `/proc/self/maps` no longer shows its path. Same addresses, nothing else touched. The host's own `libzygisk.so` stays visible on Zygisk Next; see [threat-model.md](threat-model.md). |
@@ -193,7 +193,7 @@ The first line of every file comes from the companion itself:
 The `[init]` line and the `[coverage]` lines are the ones that matter when a bypass does not work:
 
 ```
-[2026-10-24 12:00:01.123] [INFO ] [init] pinning-haters v0.1.0 api=34 build=Google/14/2024-05-05 tier=max surfaces=0x07 flags=0x0a oat_evicted=2
+[2026-10-24 12:00:01.123] [INFO ] [init] pinning-haters v0.2.0 api=34 build=Google/14/2024-05-05 tier=max surfaces=0x07 flags=0x0a oat_evicted=2
 [2026-10-24 12:00:01.125] [INFO ] [coverage] surface=platform_tls present=yes reachable=yes applied=1 style=got target=SSL_set_custom_verify
 [2026-10-24 12:00:01.126] [INFO ] [coverage] surface=java_dex present=yes reachable=yes applied=1 style=got target=adler32
 [2026-10-24 12:00:01.130] [INFO ] [coverage] surface=flutter present=yes reachable=yes applied=1 style=pattern target=ssl_crypto_x509_session_verify_cert_chain lib=libflutter.so
@@ -226,12 +226,12 @@ works and the proxy still sees nothing. For those packages, set `redirect`:
 
 At the app's next launch the root companion installs firewall rules for that app's uid:
 
-- **TCP 443** goes to the address you gave. The listener must accept TLS directly and take the
-  destination from the TLS server name (Burp: "Support invisible proxying" on the listener), because
-  the app does not send `CONNECT`.
+- **TCP 80 and 443** go to the address you gave. The listener must accept direct HTTP and TLS and
+  take the destination from the `Host` header or the TLS server name (Burp: "Support invisible
+  proxying" on the listener), because the app sends no proxy-style request and no `CONNECT`.
 - **UDP 443** goes to a closed local port, so HTTP/3 fails the way it does against a server without
   QUIC and the app falls back to TCP.
-- **IPv6 443** is refused, so the app falls back to IPv4. The proxy address is IPv4 only.
+- **IPv6 80 and 443** are refused, so the app falls back to IPv4. The proxy address is IPv4 only.
 
 Nothing changes inside the app: no hook, no descriptor, and its sockets still report the real server
 address. The rules follow the config at each launch of that package: change the address or remove
@@ -239,7 +239,7 @@ the key, force-stop the app, start it again. A reboot clears every rule. Other p
 
 What to know before turning it on:
 
-- If the proxy is unreachable, the app has no HTTPS at all until the key is removed.
+- If the proxy is unreachable, the app has no HTTP or HTTPS at all until the key is removed.
 - A connection to an address that does not exist now succeeds (the proxy answers). An app that
   probes for exactly that can notice; see [threat-model.md](threat-model.md).
 - On kernels without IPv6 NAT the IPv6 UDP block is a plain reject, which the app sees as `EPERM`,
@@ -259,7 +259,7 @@ The flashable zip in one command:
 ```sh
 export ANDROID_NDK_HOME=/path/to/android-ndk-r27c   # or ANDROID_NDK_ROOT
 tools/package.sh                                    # version from module/module.prop
-tools/package.sh v0.1.1                             # or name the version explicitly
+tools/package.sh v0.2.1                             # or name the version explicitly
 ```
 
 It configures and builds `module/jni` for arm64-v8a (MinSizeRel, API 30), strips the library, stages
@@ -275,7 +275,7 @@ The underlying build, if you want the library alone:
 cmake -S module/jni -B build/arm64 \
   -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DANDROID_STL=c++_static \
-  -DCMAKE_BUILD_TYPE=MinSizeRel -DPH_VERSION=v0.1.0
+  -DCMAKE_BUILD_TYPE=MinSizeRel -DPH_VERSION=v0.2.0
 cmake --build build/arm64
 ```
 

@@ -235,13 +235,13 @@ function renderTargets() {
     const tierCap = el('span', 'cap', 'Stealth tier');
     tierCap.append(infoButton('tier-info', 'About stealth tiers'));
 
-    // Optional: send this app's TCP 443 to a proxy listener (apps that ignore the system proxy).
+    // Optional: send this app's TCP 80 and 443 to a proxy listener (apps that ignore the system proxy).
     const rd = el('input');
     rd.type = 'text';
     rd.placeholder = '192.168.1.10:8080';
     rd.autocapitalize = 'off';
     rd.spellcheck = false;
-    rd.setAttribute('aria-label', 'Redirect TCP 443 of ' + name + ' to a proxy at ip:port');
+    rd.setAttribute('aria-label', 'Redirect TCP 80 and 443 of ' + name + ' to a proxy at ip:port');
     rd.value = rule.redirect || '';
     rd.onchange = () => {
       const v = rd.value.trim();
@@ -262,7 +262,7 @@ function renderTargets() {
     const body = el('div', 'body');
     body.append(
       field(tierCap, sel),
-      field(redirectCap, rd, 'The proxy must accept TLS directly. Burp: enable "Support invisible proxying" on the listener.'),
+      field(redirectCap, rd, 'The proxy must accept direct HTTP and TLS. Burp: enable "Support invisible proxying" on the listener.'),
       rm);
     const d = el('details', 'app');
     d.open = expanded.has(name);
@@ -450,6 +450,11 @@ function init() {
   };
   $('tier-ok').onclick = () => { cfg.stealth = $('tier').value; $('tier-confirm').hidden = true; markDirty(); renderTargets(); };
   $('tier-cancel').onclick = () => { $('tier').value = cfg.stealth; $('tier-confirm').hidden = true; };
+  $('theme').onclick = () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('ph-theme', next); } catch (_) { /* not remembered without storage */ }
+  };
   $('search').oninput = renderResults;
   $('sys').onchange = loadApps;
   // (i) buttons, including the ones rendered per app, open the dialog they name.

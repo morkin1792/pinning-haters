@@ -3,14 +3,14 @@
 All notable changes to pinning-haters are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the module's `module.prop`.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-12
 
 ### Added
 
 - `packages.<pkg>.redirect` (`"<ipv4>:<port>"`, off unless set): the root companion sends that
-  package's TCP 443 to a proxy listener with a firewall rule on its uid, for apps that ignore the
-  system proxy (Flutter, most native stacks). UDP 443 and IPv6 443 are blocked for the same uid so
-  the app falls back from HTTP/3 and IPv6. Nothing is added inside the target process. The rules
+  package's TCP 80 and 443 to a proxy listener with a firewall rule on its uid, for apps that ignore
+  the system proxy (Flutter, most native stacks). UDP 443 and IPv6 80/443 are blocked for the same
+  uid so the app falls back from HTTP/3 and IPv6. Nothing is added inside the target process. The rules
   follow the config at each launch and vanish at reboot. WebUI field per package. Verified on
   Android 11 (APatch + Zygisk Next) only.
 - WebUI app list with names, versions and icons, searchable by name or package. The data comes from
@@ -23,6 +23,8 @@ All notable changes to pinning-haters are recorded here. The format follows
   Settings and logs are collapsed, and the tier, redirect and coverage explanations sit behind
   info buttons. The page states that changes need a force-stop of the app, not a reboot, and that
   a redirect target must accept TLS directly (Burp: "Support invisible proxying").
+- WebUI: a button in the header switches between dark and light and the choice is remembered. The
+  page still starts from the system setting; a manager's own theme switch does not reach it.
 
 ## [0.1.0] - 2026-11-04
 

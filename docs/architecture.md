@@ -228,7 +228,7 @@ strictly fewer, quieter writes (2026-11-03).
 - No files are opened, created or stat'ed by the module in the target process. The companion does
   all file work.
 - No RWX pages. GOT pages are RW only for the duration of one atomic store.
-- No `INLINE_IN_PROVIDER` or `PATTERN` backend. shadowhook is not vendored in v0.1.0; those entries
+- No `INLINE_IN_PROVIDER` or `PATTERN` backend. shadowhook is not vendored in v0.2.0; those entries
   stay in the table so the coverage ladder can name the tier that would reach them.
 - No `/proc/self/maps` filtering, no `dl_iterate_phdr` hooking, no property spoofing. See
   `docs/detection-model.md`.

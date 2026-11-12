@@ -35,6 +35,6 @@ installing or using it.
 
 ## Pre-release software
 
-As of v0.1.0 the module has been verified on two physical devices (Android 11 and Android 16), not
+As of v0.2.0 the module has been verified on two physical devices (Android 11 and Android 16), not
 on the full release matrix. See the Status section of the README and `docs/testing.md` before
 relying on it.

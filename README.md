@@ -1,78 +1,96 @@
 # pinning-haters
 
-A Zygisk module that bypasses TLS certificate pinning in Android apps you are authorised to test.
-Install it once, name the packages you want to inspect, point them at your interception proxy.
-No Frida, no recompiled APKs, no Xposed framework, no manager app.
+See what an Android app sends over HTTPS, even when it pins its certificates.
+Install the module, pick the app, point it at your proxy.
 
-What sets it apart from other Zygisk unpinning modules: **by default it modifies zero bytes of
-executable code in the target process.** It rewrites pointers in data pages, patches the app's own
-DEX while ART verifies it, and does file work from a root companion outside the process. A
-memory-versus-disk check of any library's code finds nothing. Why that matters and how it is done:
-[docs/detection-model.md](docs/detection-model.md), [docs/reference.md](docs/reference.md).
+<p align="center">
+  <img src="docs/img/webui.png" alt="The module's settings page with one app targeted and a proxy address set" width="30%">
+  &nbsp;&nbsp;
+  <img src="docs/img/pinning.png" width="62%">
+</p>
 
-## Status
+pinning-haters is a Zygisk module for the apps you are authorised to test. It turns off certificate
+pinning in the apps you choose and leaves every other app alone.
 
-**Pre-release v0.1.0 (2026-11-04).** Verified on two devices: Android 11 (APatch + Zygisk Next) and
-Android 16 (KernelSU + Zygisk Next). Android 12 to 15 and Magisk as a host are untested.
+## Why this one
 
-What works on both devices: platform trust and Network Security Config pins, custom
-`TrustManager`s, TrustKit, OkHttp `CertificatePinner`, Flutter and other statically linked
-BoringSSL/OpenSSL, WebView, a React Native app carrying a protection SDK. The module survives
-`bg-dexopt` and hides its own mapping. The full record is in
-[docs/android-versions.md](docs/android-versions.md); what is out of reach is in
-[docs/known-limitations.md](docs/known-limitations.md).
+- **Nothing to script or rebuild.** No Frida, no patched APK, no Xposed framework. You pick apps
+  from a list on the phone, and the choice survives reboots.
+- **Quiet by default.** It changes no executable code in the app. It rewrites pointers in data
+  pages and patches the app's own DEX while Android verifies it, so a check that compares a
+  library's code in memory with the file on disk finds nothing.
+  [How that works](docs/detection-model.md).
+- **Covers what apps really use.** Platform trust and Network Security Config pins, custom
+  `TrustManager`s, TrustKit, OkHttp `CertificatePinner`, WebView, Flutter, and OpenSSL or BoringSSL
+  bundled inside the app.
+- **Brings the traffic to your proxy.** Flutter and most native code ignore the system proxy.
+  Give such an app a proxy address and its traffic goes there, from outside the app: no proxy
+  setting or VPN on the phone, and no CA certificate to install.
+- **Tells you what happened.** Each launch can write a log that names every pinning surface it
+  found, whether it was reached, and what to change when it was not.
 
-TLS only. Root and tamper hiding lives in
-[rootcheck-haters](https://github.com/morkin1792/rootcheck-haters); install both when an app checks
-for root.
+## Get started
 
-## Requirements
+1. **Install.** Download the zip from the
+   [Releases page](https://github.com/morkin1792/pinning-haters/releases), flash it in your root
+   manager and reboot once.
+2. **Pick an app.** Open the module's page in KernelSU or APatch, search for the app, tap it and
+   press Save. Nothing is touched until you add an app.
+3. **Open the app.** Force-stop it first if it was running. No reboot is needed for this or for any
+   later change.
 
-- Android 11 to 16 (API 30 to 36), arm64-v8a.
-- Root with a Zygisk implementation (KernelSU + Zygisk Next, APatch, Magisk 26+). KernelSU and
-  APatch get a WebUI; Magisk users edit a JSON file.
+If the app's traffic does not reach your proxy, open the app's entry on that page and fill in
+**Proxy redirect** with your proxy's `ip:port`. The proxy must accept direct connections; in Burp
+that is "Support invisible proxying" on the listener.
+[Details](docs/reference.md#apps-that-ignore-the-system-proxy).
 
-## Install
-
-1. Download the latest zip from the [Releases page](https://github.com/morkin1792/pinning-haters/releases),
-   or build it with `tools/package.sh` (see [docs/reference.md](docs/reference.md#building)).
-2. Flash it from your root manager's module screen and reboot.
-
-The module is **inert until you add a package**. It never touches `system_server` and has no
-"all apps" mode.
-
-## Target a package
-
-**KernelSU / APatch:** open the module's WebUI in the manager, pick the package, turn logging on.
-
-**Magisk:** write `/data/adb/pinning_haters/config.json` as root:
+Magisk has no module pages, so there you write the same choices to
+`/data/adb/pinning_haters/config.json` as root:
 
 ```json
 {
   "version": 2,
-  "packages": { "com.example.app": {} },
+  "packages": { "com.example.app": { "redirect": "192.168.1.10:8080" } },
   "log": { "enabled": true }
 }
 ```
 
-Then force-stop the app and start it again. No reboot: the companion re-reads the config at every
-launch. No proxy CA is needed for targeted packages.
+## What you need
 
-An app that ignores the system proxy (Flutter, most native stacks) can be steered per package with
-`"redirect": "<proxy ip>:<port>"`; see
-[docs/reference.md](docs/reference.md#apps-that-ignore-the-system-proxy).
+- Android 11 to 16, arm64.
+- Root with Zygisk: KernelSU or APatch with Zygisk Next, or Magisk 26 and later.
+
+## What it does not do
+
+- **Hide root.** That is [rootcheck-haters](https://github.com/morkin1792/rootcheck-haters);
+  install both when an app checks for root.
+- **Beat every protection.** An app with its own tamper detection can still notice the module or
+  refuse to run. The default mode is quiet, not invisible; [docs/threat-model.md](docs/threat-model.md)
+  says what detects it.
+- **Reach every runtime.** Pinning written in Dart, Unity or Mono code, and checks backed by
+  hardware, are out of reach today. The full list is in
+  [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Check that it worked
+
+Turn on **Logs** on the module's page, open the app, and read the newest log there. From a shell:
 
 ```sh
 adb shell su -c 'ls -t /data/adb/pinning_haters/log | head -1'
 adb shell su -c 'cat /data/adb/pinning_haters/log/<file>' | grep coverage
 ```
 
-`present=yes reachable=yes` means the surface was hooked. `present=yes reachable=no` names the
-reason and, when a higher tier would help, the tier to set for that one package. `present=no` is
-normal. Every key, every reason: [docs/reference.md](docs/reference.md),
+`present=yes reachable=yes` means that surface was hooked. `present=yes reachable=no` gives the
+reason and, when a louder mode would help, the tier to set for that one app. `present=no` is
+normal: the app does not ship that library. Every line is explained in
 [docs/coverage.md](docs/coverage.md).
+
+## Status
+
+**v0.2.0, pre-release (2026-11-12).** Verified on Android 11 (APatch + Zygisk Next) and Android 16
+(KernelSU + Zygisk Next). The proxy redirect and the redesigned settings page have run on the
+Android 11 device only. Android 12 to 15 and Magisk as a host are untested. The full record is in
+[docs/android-versions.md](docs/android-versions.md).
 
 ## Documentation
 
